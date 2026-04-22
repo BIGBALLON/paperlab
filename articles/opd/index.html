@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Thinking Machines Lab's On-Policy Distillation post reframes post-training. I read it as a claim that SFT vs RL is the wrong axis; the right axis is (sampling-policy × reward-density), and on-policy distillation is the quadrant that was empty on that 2×2 the whole time. A thoughts piece on the reframe, the ~4-line incorporate_kl_penalty patch that fills the quadrant, the matched-LoRA cost experiment behind the 50–100× RL savings, and why a frozen teacher makes this the only continual-learning primitive that doesn't drift." />
+<meta name="theme-color" content="#05070a" />
+<title>On-Policy Distillation · The Reframe — thinklab</title>
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+<link rel="canonical" href="/articles/opd/" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" /></noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" />
+<link rel="stylesheet" href="../../assets/theme.css" />
+<script defer src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="(window.requestIdleCallback||function(f){return setTimeout(f,0)})(function(){renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});});"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+</head>
+<body class="page-article">
+
+<a class="home-btn" href="../../" aria-label="Back to index"><span class="arrow">←</span><span class="label">cd&nbsp;~</span></a>
+<div id="scroll-progress" aria-hidden="true"></div>
+<button id="to-top" aria-label="back to top" title="back to top">↑</button>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="G-blue"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#1b2b52"/><stop offset="1" stop-color="#0a1124"/></linearGradient>
+    <linearGradient id="G-violet" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#2e1a55"/><stop offset="1" stop-color="#180c32"/></linearGradient>
+    <linearGradient id="G-teal"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0d3d33"/><stop offset="1" stop-color="#062018"/></linearGradient>
+    <linearGradient id="G-orange" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4a2414"/><stop offset="1" stop-color="#22100a"/></linearGradient>
+    <linearGradient id="G-pink"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4e1a33"/><stop offset="1" stop-color="#26091a"/></linearGradient>
+    <linearGradient id="G-slate"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#11162a"/><stop offset="1" stop-color="#070a14"/></linearGradient>
+    <linearGradient id="G-green"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0b3a22"/><stop offset="1" stop-color="#051f12"/></linearGradient>
+    <linearGradient id="G-rainbow" x1="0" x2="1">
+      <stop offset="0"   stop-color="#39ff88"/>
+      <stop offset=".33" stop-color="#00e5ff"/>
+      <stop offset=".66" stop-color="#9d7bff"/>
+      <stop offset="1"   stop-color="#ff3fa4"/>
+    </linearGradient>
+    <linearGradient id="G-neon-green" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#1a2a1e"/><stop offset="1" stop-color="#0a1710"/></linearGradient>
+    <linearGradient id="G-glow-blue"  x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#00e5ff" stop-opacity=".35"/><stop offset="1" stop-color="#00e5ff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="G-glow-green" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#39ff88" stop-opacity=".32"/><stop offset="1" stop-color="#39ff88" stop-opacity="0"/></linearGradient>
+    <radialGradient id="G-hot-green" cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#39ff88" stop-opacity=".6"/><stop offset="1" stop-color="#39ff88" stop-opacity="0"/></radialGradient>
+    <radialGradient id="G-hot-cyan"  cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#00e5ff" stop-opacity=".55"/><stop offset="1" stop-color="#00e5ff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="G-hot-mag"   cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#ff3fa4" stop-opacity=".55"/><stop offset="1" stop-color="#ff3fa4" stop-opacity="0"/></radialGradient>
+    <filter id="F-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dx="0" dy="2" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".5"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-neon" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="b1"/>
+      <feGaussianBlur stdDeviation="1.5" result="b2"/>
+      <feMerge><feMergeNode in="b1"/><feMergeNode in="b2"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow-green" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="0 0 0 0 .22  0 0 0 0 1  0 0 0 0 .55  0 0 0 .7 0" result="cb"/>
+      <feMerge><feMergeNode in="cb"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow-cyan" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="0 0 0 0 0  0 0 0 0 .9  0 0 0 0 1  0 0 0 .7 0" result="cb"/>
+      <feMerge><feMergeNode in="cb"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="P-grid" width="22" height="22" patternUnits="userSpaceOnUse">
+      <path d="M 22 0 L 0 0 0 22" fill="none" stroke="#1a2338" stroke-width=".5"/>
+      <circle cx="0" cy="0" r="1" fill="#2a3458" opacity=".55"/>
+    </pattern>
+    <pattern id="P-dots" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#2a3458" opacity=".55"/>
+    </pattern>
+    <pattern id="P-scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <path d="M 0 4 L 4 0" stroke="#39ff88" stroke-width=".3" opacity=".18"/>
+    </pattern>
+    <pattern id="P-circuit" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M 0 20 L 20 20 L 20 0 M 40 60 L 40 40 L 60 40" fill="none" stroke="#1e3a52" stroke-width=".6" opacity=".5"/>
+      <circle cx="20" cy="20" r="1.4" fill="#00e5ff" opacity=".35"/>
+      <circle cx="40" cy="40" r="1.4" fill="#39ff88" opacity=".35"/>
+    </pattern>
+    <marker id="A-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#00e5ff"/></marker>
+    <marker id="A-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9d7bff"/></marker>
+    <marker id="A-teal"   viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#39ff88"/></marker>
+    <marker id="A-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffb020"/></marker>
+    <marker id="A-green"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#39ff88"/></marker>
+    <marker id="A-mag"    viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ff3fa4"/></marker>
+    <marker id="A-amber"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffd166"/></marker>
+    <marker id="arrow"    viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c9d1d9"/></marker>
+    <symbol id="S-corner" viewBox="0 0 14 14">
+      <path d="M 1 6 L 1 1 L 6 1" fill="none" stroke="#39ff88" stroke-width="1.2"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="shell">
+
+  <!-- =========================== HERO =========================== -->
+  <header class="hero">
+    <div class="hero-term">
+      <div class="term-bar">
+        <span class="term-dot d-r"></span>
+        <span class="term-dot d-y"></span>
+        <span class="term-dot d-g"></span>
+        <span class="term-title">~/thinkingmachines/blog — on-policy-distillation.md · ~/thinklab/articles/opd</span>
+      </div>
+      <div class="term-body">
+        <div class="term-prompt">
+          <span class="path">reader@thinklab</span>:<span class="cmd">~/opd</span>$ cat post.md | render --theme=geek --mode=thoughts<span class="cursor"></span>
+        </div>
+        <h1>On-Policy Distillation &middot; The Reframe</h1>
+        <p class="sub">
+          <span class="line">Thinking Machines Lab's <a href="https://thinkingmachines.ai/blog/on-policy-distillation/" target="_blank" rel="noopener">On-Policy Distillation</a> post reads, on the surface, like an implementation note &mdash; "sample from the student, grade every token with a fixed teacher's log-probs, advantage = negative reverse KL, done". The headline numbers are the shiny thing: <em>9&ndash;30&times; less compute than SFT for reasoning, 50&ndash;100&times; less compute than RL in the matched comparison</em>, a <em>45 &rarr; 83</em> IF-eval recovery on an assistant mid-trained on internal documents.</span>
+          <span class="line">I think the paper's real contribution is smaller and louder. It's a reframe. "SFT vs RL" is a historical dichotomy, two labels that got used for so long that teams plan post-training pipelines around the labels rather than the two axes the labels are actually mixing up. The right axes are <strong>where trajectories come from</strong> and <strong>how dense the reward is</strong>. Draw that 2&times;2 &mdash; on-policy distillation is the quadrant that was sitting empty the whole time.</span>
+        </p>
+        <div class="hero-badges">
+          <span class="hero-badge" data-variant="green">on-policy &middot; dense</span>
+          <span class="hero-badge" data-variant="cyan">reverse KL = advantage</span>
+          <span class="hero-badge" data-variant="magenta">9&ndash;30&times; vs SFT</span>
+          <span class="hero-badge" data-variant="violet">50&ndash;100&times; vs RL</span>
+          <span class="hero-badge" data-variant="amber">thoughts &middot; not a deep-dive</span>
+        </div>
+        <div class="hero-toc">
+          <a href="#thesis">thesis</a>
+          <a href="#axes">the 2&times;2</a>
+          <a href="#mechanism">mechanism</a>
+          <a href="#density">density</a>
+          <a href="#search">RL-as-search</a>
+          <a href="#continual">continual</a>
+          <a href="#counterpoints">counterpoints</a>
+          <a href="#sowhat">so what</a>
+          <a href="#takeaways">takeaways</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================== TL;DR =========================== -->
+  <div class="callout" data-variant="k">
+    <span class="t">TL;DR</span>
+    <p>The TML post introduces on-policy distillation as a technique: sample trajectories from the student, compute <em>per-token reverse KL</em> against a fixed teacher's log-probs, plug that in as the RL advantage. Mechanically it's a one-line change in an existing RL loop. Conceptually it's a reorganization: <strong>the two axes of post-training are sampling policy (on / off) and reward density (dense / sparse), not "SFT vs RL"</strong>. SFT picks off-policy&times;dense. RL picks on-policy&times;sparse. On-policy distillation picks on-policy&times;dense &mdash; the last quadrant &mdash; and the results (9&ndash;30&times; cheaper than SFT for reasoning, 50&ndash;100&times; cheaper than RL in a matched ablation, 45&rarr;83 IF-eval recovery after mid-training wipes it out) read as what you'd expect from finally filling that box. My take: stop planning pipelines around "do some SFT, then some RL"; plan them around <em>which quadrant each phase is in and why</em>. The interesting downstream consequence &mdash; that SFT on a model's own KL&thinsp;=&thinsp;0 samples <em>still</em> degrades it &mdash; is the one that makes on-policy distillation the least-bad available tool for continual learning.</p>
+  </div>
+
+  <!-- =========================== THESIS =========================== -->
+  <section id="thesis">
+  <!-- principle: right axis: sampling-policy x reward-density -->
+    <div class="wrap">
+      <h2 class="sec">thesis <span class="desc-inline">// the reframe is the thing</span></h2>
+
+      <p>I sat with the post for a couple of afternoons. On the first pass I came out thinking "this is a neat trick, the math is tidy, the compute numbers are impressive". On the second pass I realized I was underselling it &mdash; not because the technique is more clever than it looks, but because the <em>framing</em> is doing more work than the technique. The technique is straightforward once you see the framing; the framing is what makes the technique obvious in retrospect and &mdash; this is the interesting part &mdash; makes you wonder why it took until 2023&ndash;2025 to show up in practice with this kind of cost curve.</p>
+
+      <p>The claim I want to defend in this piece is narrow and practical:</p>
+
+      <div class="callout" data-variant="k" style="margin-top:10px">
+        <span class="t">claim</span>
+        <p>"SFT vs RL" is the wrong axis to plan a post-training stack around. The right axes are orthogonal &mdash; <em>where do trajectories come from?</em> and <em>how dense is the per-token reward?</em> &mdash; and once you draw the 2&times;2, on-policy distillation isn't a hybrid or a compromise. It's the fourth corner that was empty because nobody was reading the grid as a grid.</p>
+      </div>
+
+      <p>Everything below is in service of that claim: the 2&times;2 picture, the density-of-reward argument that makes on-policy distillation look obvious, the RL-as-search reframe the post leans on for the 50&ndash;100&times; compute story, the continual-learning result that I find the most striking experimental fact in the whole post, and the counterpoints I think honest people should steelman before adopting this in production. Then a short "so what" for small teams, because the cost curve implied by the reframe changes what "ambitious post-training" can even mean when you don't have frontier-lab budgets.</p>
+
+      <p>I should say upfront: this is a thoughts piece, not a deep-dive. I'm reading <em>one blog post</em> carefully, borrowing its numbers at face value, pulling in a handful of primary sources (Agarwal et al., Gu et al., the Qwen3 report, Lightman's process-reward work) when the framing leans on them. I have not reproduced any of the numbers. I am quite confident the framing survives independent of the exact multipliers.</p>
+    </div>
+  </section>
+
+  <!-- =========================== THE 2x2 =========================== -->
+  <section id="axes">
+  <!-- principle: SFT vs RL is the wrong dichotomy -->
+    <div class="wrap">
+      <h2 class="sec">the 2&times;2 <span class="desc-inline">// sampling policy &times; reward density</span></h2>
+
+      <p>Pick up the <a href="https://thinkingmachines.ai/blog/on-policy-distillation/" target="_blank" rel="noopener">TML post</a> at its own comparison table and read only the middle two columns:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th>Sampling</th>
+              <th>Reward signal</th>
+              <th>The 2&times;2 box</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Supervised fine-tuning (SFT)</td>
+              <td>off-policy</td>
+              <td>dense (per-token cross-entropy)</td>
+              <td>off-policy &middot; dense</td>
+            </tr>
+            <tr>
+              <td>Reinforcement learning (RL)</td>
+              <td>on-policy</td>
+              <td>sparse (one reward per episode)</td>
+              <td>on-policy &middot; sparse</td>
+            </tr>
+            <tr>
+              <td><b>On-policy distillation</b></td>
+              <td><b>on-policy</b></td>
+              <td><b>dense (per-token reverse KL)</b></td>
+              <td><b>on-policy &middot; dense</b></td>
+            </tr>
+            <tr>
+              <td><em>(pathological)</em></td>
+              <td>off-policy</td>
+              <td>sparse</td>
+              <td>off-policy &middot; sparse &mdash; nobody deploys this</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p style="margin-top:14px">That table is a rotation. It's the same list of methods read against two independent axes &mdash; and the axes are more informative than the method labels. Let me draw it as a picture, because in a 2&times;2 the point is which quadrants are occupied:</p>
+
+      <div class="svg-wrap">
+        <svg viewBox="0 0 1200 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="2x2 grid of post-training methods. Axes: sampling policy (x, off vs on) and reward density (y, sparse vs dense). SFT sits in off-policy dense; RL sits in on-policy sparse; on-policy distillation sits in on-policy dense; the off-policy sparse quadrant is pathological and labeled empty.">
+          <rect x="0" y="0" width="1200" height="520" fill="url(#P-grid)" opacity=".45"/>
+          <g>
+            <rect x="20" y="8" width="1160" height="22" rx="3" fill="#0a0e14" stroke="rgba(0,229,255,.22)"/>
+            <text x="36" y="23" fill="#00e5ff" font-size="10" font-weight="700" letter-spacing=".14em">&#9670; POST-TRAINING 2&times;2 &middot; SAMPLING POLICY &times; REWARD DENSITY</text>
+            <text x="1164" y="23" fill="#8b949e" font-size="10" text-anchor="end" letter-spacing=".06em">fig: axes/main</text>
+          </g>
+
+          <!-- Axes labels -->
+          <text x="600" y="56" text-anchor="middle" fill="#c9d1d9" font-family="'Space Grotesk',Inter,sans-serif" font-size="15" font-weight="600" letter-spacing=".04em">axis-x: sampling policy &rarr;</text>
+          <text x="600" y="500" text-anchor="middle" fill="#c9d1d9" font-family="'Space Grotesk',Inter,sans-serif" font-size="13" font-weight="600" letter-spacing=".04em" font-style="italic">axis-y: reward density (dense top row, sparse bottom row)</text>
+
+          <!-- Column headers -->
+          <text x="360" y="90" text-anchor="middle" fill="#8b949e" font-size="12" font-weight="600" letter-spacing=".1em">OFF-POLICY &middot; trajectories from teacher / dataset</text>
+          <text x="880" y="90" text-anchor="middle" fill="#8b949e" font-size="12" font-weight="600" letter-spacing=".1em">ON-POLICY &middot; trajectories from the student itself</text>
+
+          <!-- Row headers -->
+          <text x="85" y="190" fill="#8b949e" font-size="12" font-weight="600" letter-spacing=".1em">DENSE</text>
+          <text x="85" y="205" fill="#6e7681" font-size="10">per-token signal</text>
+          <text x="85" y="380" fill="#8b949e" font-size="12" font-weight="600" letter-spacing=".1em">SPARSE</text>
+          <text x="85" y="395" fill="#6e7681" font-size="10">per-episode signal</text>
+
+          <!-- Grid lines -->
+          <line x1="120" y1="110" x2="1160" y2="110" stroke="#1e2a44" stroke-width="1" opacity=".7"/>
+          <line x1="120" y1="280" x2="1160" y2="280" stroke="#1e2a44" stroke-width="1" opacity=".7"/>
+          <line x1="120" y1="460" x2="1160" y2="460" stroke="#1e2a44" stroke-width="1" opacity=".7"/>
+          <line x1="120" y1="110" x2="120" y2="460" stroke="#1e2a44" stroke-width="1" opacity=".7"/>
+          <line x1="640" y1="110" x2="640" y2="460" stroke="#1e2a44" stroke-width="1" opacity=".7"/>
+          <line x1="1160" y1="110" x2="1160" y2="460" stroke="#1e2a44" stroke-width="1" opacity=".7"/>
+
+          <!-- Q1: off-policy dense (SFT) -->
+          <g transform="translate(136,120)">
+            <rect x="0" y="0" width="490" height="155" rx="10" fill="url(#G-blue)" stroke="#4d6ed6" stroke-opacity=".55"/>
+            <g transform="translate(14,-10)">
+              <rect x="0" y="0" width="190" height="20" rx="3" fill="#070c1e" stroke="#7c9cff"/>
+              <text x="10" y="14" fill="#7c9cff" font-size="10" font-weight="700" letter-spacing=".14em">[Q1] SFT &middot; OFF-POL &middot; DENSE</text>
+            </g>
+            <foreignObject x="16" y="12" width="458" height="140">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:1.55;color:#cfd4ec">
+                <div style="font-weight:700;color:#fff;margin-bottom:4px">Supervised fine-tuning</div>
+                <div>trajectories: sampled from a teacher or a dataset</div>
+                <div>reward: per-token cross-entropy against the sample</div>
+                <div style="margin-top:6px;color:#ffcf9a">pain: the student learns in states the <em>teacher</em> visits, not states it itself will visit &rarr; compounding error, style mimicry without accuracy.</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Q2: on-policy dense (on-policy distillation) -->
+          <g transform="translate(656,120)">
+            <rect x="0" y="0" width="490" height="155" rx="10" fill="url(#G-green)" stroke="#39ff88" stroke-opacity=".6"/>
+            <g transform="translate(14,-10)">
+              <rect x="0" y="0" width="260" height="20" rx="3" fill="#051710" stroke="#39ff88"/>
+              <text x="10" y="14" fill="#39ff88" font-size="10" font-weight="700" letter-spacing=".14em">[Q2] ON-POLICY DISTILL &middot; ON-POL &middot; DENSE</text>
+            </g>
+            <foreignObject x="16" y="12" width="458" height="140">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:1.55;color:#d8ffe6">
+                <div style="font-weight:700;color:#fff;margin-bottom:4px">On-policy distillation</div>
+                <div>trajectories: sampled from the <em>student</em></div>
+                <div>reward: per-token reverse KL against a frozen teacher</div>
+                <div style="margin-top:6px;color:#9eff9e">gain: dense signal in the student's own distribution; the teacher is a fixed reward model &mdash; no reward hacking, no reward training.</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Q3: off-policy sparse (pathological) -->
+          <g transform="translate(136,300)">
+            <rect x="0" y="0" width="490" height="150" rx="10" fill="url(#G-slate)" stroke="#3a4566" stroke-opacity=".5" stroke-dasharray="4 4"/>
+            <g transform="translate(14,-10)">
+              <rect x="0" y="0" width="230" height="20" rx="3" fill="#0a0e14" stroke="#3a4566"/>
+              <text x="10" y="14" fill="#8b949e" font-size="10" font-weight="700" letter-spacing=".14em">[Q3] OFF-POL &middot; SPARSE &middot; EMPTY</text>
+            </g>
+            <foreignObject x="16" y="12" width="458" height="136">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:1.55;color:#8b949e">
+                <div style="font-weight:700;color:#c9d1d9;margin-bottom:4px">Pathological &mdash; nobody deploys this</div>
+                <div>trajectories: teacher's</div>
+                <div>reward: one scalar per episode</div>
+                <div style="margin-top:6px">Why empty: at once the worst of both worlds &mdash; wrong states <em>and</em> no per-token credit assignment. It exists in theory (batch RL from demonstrations with outcome reward only) and almost nowhere in LLM practice.</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Q4: on-policy sparse (RL) -->
+          <g transform="translate(656,300)">
+            <rect x="0" y="0" width="490" height="150" rx="10" fill="url(#G-orange)" stroke="#ffb020" stroke-opacity=".6"/>
+            <g transform="translate(14,-10)">
+              <rect x="0" y="0" width="220" height="20" rx="3" fill="#1a0e05" stroke="#ffb020"/>
+              <text x="10" y="14" fill="#ffb020" font-size="10" font-weight="700" letter-spacing=".14em">[Q4] RL &middot; ON-POL &middot; SPARSE</text>
+            </g>
+            <foreignObject x="16" y="12" width="458" height="136">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;line-height:1.55;color:#ffd7a8">
+                <div style="font-weight:700;color:#fff;margin-bottom:4px">Reinforcement learning</div>
+                <div>trajectories: sampled from the student</div>
+                <div>reward: one scalar per rollout (verifier / RM / human)</div>
+                <div style="margin-top:6px;color:#ffcf9a">pain: O(1) bits per episode; most of the compute pays for rollouts and credit assignment, not for updates.</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Arrow hint: distillation = Q4 with density upgraded, Q1 with sampling upgraded -->
+          <path d="M 620 195 Q 648 195 660 195" fill="none" stroke="#39ff88" stroke-width="1.5" marker-end="url(#A-green)" opacity=".7"/>
+          <path d="M 880 295 Q 880 280 880 265" fill="none" stroke="#39ff88" stroke-width="1.5" marker-end="url(#A-green)" opacity=".7"/>
+        </svg>
+      </div>
+      <p class="cap">Notice the two green arrows both pointing at Q2: SFT reaches Q2 by moving sampling from off-policy to on-policy (horizontal arrow); RL reaches Q2 by moving density from sparse to dense (vertical arrow). The empty Q3 quadrant is the honest answer to "why wasn't this always obvious?" &mdash; it wasn't empty by accident, it's the pathological box.</p>
+
+      <p class="principle">The reason this reframe matters is that it decouples two design decisions that were previously glued together by folklore. Without the 2&times;2 you end up with questions like <em>"is RL overkill? should we just do more SFT?"</em> With the 2&times;2 the question becomes sharper: <em>are you in the right quadrant for your failure mode?</em> If the student's failure is "compounds its own early errors over 4k-token trajectories" (Q1 pain, off-policy sampling), moving density around won't fix it. If the failure is "I can't figure out which of the 3k tokens in the rollout was the mistake" (Q4 pain, sparse reward), moving sampling around won't fix it. On-policy distillation is the method whose design answers both pains jointly, which is why it shows up in the quadrant nobody had drawn.</p>
+    </div>
+  </section>
+
+  <!-- =========================== MECHANISM =========================== -->
+  <section id="mechanism">
+  <!-- principle: reward replacement, not an architectural move -->
+    <div class="wrap">
+      <h2 class="sec">mechanism <span class="desc-inline">// the patch that fills the quadrant</span></h2>
+
+      <p>Before going further it's worth looking at the thing itself. The mechanism is small enough to write on one page, which is exactly what makes the 2&times;2 in <a href="#axes">#axes</a> a <em>rotation</em> and not a new method: you take an existing RL trainer and change how a single advantage tensor gets populated. Nothing about the model, the optimizer, the loss function, or the sampling loop is new.</p>
+
+      <div class="formula">
+        $$\mathcal{L}_{\mathrm{OPD}}(\theta)\;=\;-\,\mathbb{E}_{\tau\sim\pi_\theta}\!\left[\,\sum_{t=1}^{|\tau|} A_t\,\log\pi_\theta(a_t\mid s_t)\,\right],\qquad A_t\;=\;-\,\bigl[\,\log\pi_\theta(a_t\mid s_t)\;-\;\log\pi_{\mathrm{teacher}}(a_t\mid s_t)\,\bigr].$$
+      </div>
+
+      <p class="cap">Trajectories $\tau$ sampled from the student $\pi_\theta$ &mdash; that's the <em>on-policy</em> coordinate. Advantage $A_t$ is the negative per-token reverse KL against a frozen teacher $\pi_{\mathrm{teacher}}$ &mdash; that's the <em>dense</em> coordinate. The outer REINFORCE objective is unchanged; only $A_t$ differs from the standard RL recipe. Zero $A_t$ everywhere means "the student is already behaving like the teacher at every visited state"; that's the fixed point the optimizer is pulled toward.</p>
+
+      <p>The reference implementation (tinker-cookbook at tag <code>v0.2.1</code>, <a href="https://github.com/thinking-machines-lab/tinker-cookbook/blob/v0.2.1/tinker_cookbook/distillation/train_on_policy.py" target="_blank" rel="noopener"><code>tinker_cookbook/distillation/train_on_policy.py</code></a>, function <code>incorporate_kl_penalty</code>) is what a "~4 lines on top of the RL training script" actually looks like after you strip the batching and metrics plumbing:</p>
+
+      <pre><code class="language-python"># inside the per-batch step, after sampling trajectories from the student
+
+teacher_logprobs = await teacher_client.compute_logprobs_async(sequence_input)
+
+sampled_logprobs = datum.loss_fn_inputs["logprobs"].to_torch()        # log pi_theta(a_t | s_t)
+reverse_kl      = sampled_logprobs - torch.tensor(teacher_logprobs[1:])  # log p - log q, per token
+advantages      = -kl_penalty_coef * mask * reverse_kl                 # A_t = -KL, masked
+
+datum.loss_fn_inputs["advantages"] = (
+    datum.loss_fn_inputs["advantages"].to_torch() + advantages         # same RL loss downstream
+)
+</code></pre>
+
+      <p class="cap">Load-bearing lines transcribed from <a href="https://github.com/thinking-machines-lab/tinker-cookbook/blob/v0.2.1/tinker_cookbook/distillation/train_on_policy.py#L55-L110" target="_blank" rel="noopener"><code>train_on_policy.py</code> L55&ndash;L110</a> at tag <code>v0.2.1</code>. Everything upstream (trajectory sampling, batch assembly) is the stock RL loop; everything downstream (<code>loss_fn="importance_sampling"</code>, optimizer step) is the stock RL loss. The only <em>new</em> code is one <code>compute_logprobs</code> call on the teacher and a per-token subtraction.</p>
+
+      <p class="principle">This shape is what makes on-policy distillation structurally a <strong>reward-replacement move, not an architectural one</strong>. If you already run PPO, GRPO, or REINFORCE-with-importance-sampling, you have the on-policy quadrant covered &mdash; what you're missing is a dense reward on the student's states. The teacher's <code>compute_logprobs</code> is exactly that dense reward: no reward model to train, no preference dataset to collect, no shaping tricks to tune, no reward head to add. The claim of <a href="#axes">#axes</a> is that a quadrant was empty; the claim of this section is that the quadrant costs one <code>compute_logprobs</code> call. Those two facts together are why the cost curves downstream look the way they do.</p>
+    </div>
+  </section>
+
+  <!-- =========================== DENSITY =========================== -->
+  <section id="density">
+  <!-- principle: reward density per token bounds RL efficiency -->
+    <div class="wrap">
+      <h2 class="sec">density <span class="desc-inline">// O(N) bits beats O(1) bits, priced in FLOPs</span></h2>
+
+      <p>The density axis is the one the TML post hammers hardest, and the one I think is most under-appreciated outside of frontier-lab writing. The post leans on the information-theoretic framing from its earlier <a href="https://thinkingmachines.ai/blog/lora/" target="_blank" rel="noopener">LoRA Without Regret</a> piece: RL teaches O(1) bits per episode, regardless of how many tokens the episode contains; distillation teaches O(N) bits per episode, one per token. Reverse KL as a per-token reward <em>literally</em> realizes the O(N) upper bound &mdash; every student token gets graded against the teacher's log-prob at the same state.</p>
+
+      <p>What makes me sit up is that the post isn't content with a hand-wave. It pays out the information theory in FLOPs, and it runs two experiments the framing predicts should go in opposite directions from the "SFT vs RL" folk intuition.</p>
+
+      <h3 class="sub">Experiment 1 &mdash; Qwen3-8B-Base math reasoning: 9&ndash;30&times; vs SFT</h3>
+
+      <p>Setup from the TML post: start from Qwen3-8B-Base, do an initial SFT pass on 400k prompts from OpenThoughts-3 (this gets you 60% on AIME'24), then push for 70%. Three ways to do it:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th class="num">AIME'24</th>
+              <th class="num">Teacher FLOPs</th>
+              <th class="num">Student FLOPs</th>
+              <th class="num">CE vs SFT-2M</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>SFT init (400K prompts)</td>
+              <td class="num">60%</td>
+              <td class="num">8.5&thinsp;&times;&thinsp;10<sup>20</sup></td>
+              <td class="num">3.8&thinsp;&times;&thinsp;10<sup>20</sup></td>
+              <td class="num">&mdash;</td>
+            </tr>
+            <tr>
+              <td>SFT-2M (more of the same, extrapolated)</td>
+              <td class="num">~70%</td>
+              <td class="num">3.4&thinsp;&times;&thinsp;10<sup>21</sup></td>
+              <td class="num">1.5&thinsp;&times;&thinsp;10<sup>21</sup></td>
+              <td class="num">1&times;</td>
+            </tr>
+            <tr>
+              <td>Reinforcement learning (Qwen3 Table 21)</td>
+              <td class="num">68%</td>
+              <td class="num">&mdash;</td>
+              <td class="num">&mdash;</td>
+              <td class="num">&asymp;&thinsp;1&times;</td>
+            </tr>
+            <tr>
+              <td><b>On-policy distillation (150 steps &#x2248; 77K prompts)</b></td>
+              <td class="num"><b>70%<sup>*</sup></b></td>
+              <td class="num"><b class="best">8.4&thinsp;&times;&thinsp;10<sup>19</sup></b></td>
+              <td class="num"><b class="best">8.2&thinsp;&times;&thinsp;10<sup>19</sup></b></td>
+              <td class="num"><b class="best">9&ndash;30&times;</b></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="cap">Source: TML post "Distillation for reasoning" table. Notice the drop from SFT-2M to distillation: one order of magnitude on teacher FLOPs and student FLOPs both, to reach the same AIME'24 score. <sup>*</sup>SFT-2M's 70% is an extrapolation along the log-linear SFT curve, not a measured point; distillation's 70% is measured after 150 steps. The 9&ndash;30&times; range is "SFT dataset given / reuse across runs" (9&times;) vs "SFT cost includes its own teacher sampling" (30&times;).</p>
+
+      <p>Two details worth naming. First, "9&times;" is the conservative bound &mdash; it assumes the teacher's SFT samples are already sitting on disk, amortized across many runs, and only counts the extra distillation teacher forward pass as real cost. "30&times;" is the number you get if you're training a fresh specialist on a task for which no off-policy distillation dataset exists, and you have to pay for the teacher to both generate SFT data and serve log-probs. In the small-team case I care about most, <b>30&times; is the honest number</b>, because the whole reason we're distilling instead of calling the API 2M times is that we can't afford the teacher to produce a fresh 2M-prompt SFT corpus first.</p>
+
+      <p>Second, the SFT row is an <em>extrapolation</em>, not a measured point &mdash; the TML post is honest about this. It's a log-linear fit through the first 400k prompts, projected. My read is that the extrapolation is optimistic rather than pessimistic: at the 70&ndash;80% regime SFT scaling curves bend downward, not upward, because the marginal prompt teaches ever-fewer <em>new</em> bits. If the real curve sub-linearly approaches 70%, the 9&ndash;30&times; ratio understates the advantage. If it plateaus below 70% at all, the ratio is infinite. The TML post's published measurement is the conservative reading.</p>
+
+      <h3 class="sub">Experiment 2 &mdash; matched LoRA rank, distill back from RL teacher: 50&ndash;100&times; vs RL</h3>
+
+      <p>This experiment is the one I find more interesting, because it isolates the density variable cleanly. Start from Qwen3-8B-Base. Train an RL model on DeepMath with LoRA rank 128, matching the procedure from <em>LoRA Without Regret</em>. Now take that RL-trained model as the teacher, and on-policy-distill <em>back into the same base</em>. Same starting point, same model architecture, same LoRA rank; the only thing changing is the density of the reward signal (O(1) per episode for RL, O(N) per episode for distillation).</p>
+
+      <p>The post reports the distilled student reaches the teacher's AIME score in under 10 gradient steps; the RL run took 70 to reach the same level. "<em>7&ndash;10&times; fewer gradient steps</em>" is the number in the post; the 50&ndash;100&times; total compute reduction comes from two additional facts the post spells out:</p>
+
+      <ul>
+        <li>Distillation trains reasonably at <em>shorter context lengths</em> than evaluation, because the per-token reward means there's no "episode got cut off before it finished" discontinuity in the signal. RL has to train at (roughly) eval-length context so the policy doesn't learn a format penalty. Shorter context means smaller FLOPs per step.</li>
+        <li>Distillation works at much smaller batch sizes, because O(N) bits per episode reduces gradient noise enough that you don't need the big batch as an averager. RL has to batch-compensate for the sparse signal.</li>
+      </ul>
+
+      <p>Both of those are density consequences, not sampling consequences. This is the cleanest evidence I've seen that the density axis is <em>the</em> cost-dominant axis in the 2&times;2 &mdash; flip it, holding sampling and architecture fixed, and you buy back roughly two orders of magnitude of compute.</p>
+
+      <p class="principle">The reason density matters mechanistically is that a gradient update is only as informative as the signal you're differentiating. An RL update with a single scalar reward at episode end is computing d/d&theta; on a signal that collapses to one real number per trajectory, regardless of how many tokens the trajectory had; the gradient has to spread that one number over every token via credit assignment, and credit assignment is a variance amplifier. Reverse KL as advantage gives you a scalar <em>per token</em>, computed at the exact state the gradient is touching. The variance reduction is big enough that LoRA at rank 32 &mdash; which trails full fine-tuning by 13% after SFT &mdash; only trails by 6% after on-policy distillation (TML post, "AIME'24 over the course of on-policy distillation"). That is what O(N) bits per episode <em>buys</em>: you can run a much leaner training setup and still compile the same policy, because the gradient isn't wasting most of its variance on credit assignment.</p>
+    </div>
+  </section>
+
+  <!-- =========================== RL AS SEARCH =========================== -->
+  <section id="search">
+  <!-- principle: RL searches; distillation compresses the search -->
+    <div class="wrap">
+      <h2 class="sec">RL-as-search <span class="desc-inline">// and why the teacher is a reward model</span></h2>
+
+      <p>The reframe I want to steal most from the TML post is its reading of what RL is for. The conventional framing &mdash; the one I was taught &mdash; is that RL trains behavior you can't write down as supervision. The post's framing is different and, I think, more correct:</p>
+
+      <div class="callout" data-variant="k" style="margin-top:8px">
+        <span class="t">reframe</span>
+        <p>"We should think of RL as spending most of its compute on <em>search</em> &mdash; rolling out a policy and assigning credit &mdash; rather than on making updates." (Kevin Lu, TML blog post)</p>
+      </div>
+
+      <p>Read that together with the 50&ndash;100&times; matched-rank experiment and the story falls into place. RL's gradient updates are cheap; its compute is spent on rolling out, scoring, and figuring out which tokens deserve credit. Once RL has done that work &mdash; once a good strategy exists in the teacher's weights &mdash; on-policy distillation is a method for compressing that strategy into a student at ~10&times; fewer gradient steps, because the teacher's log-probs serve as <em>dense supervision of the already-found strategy</em>. You're not re-searching; you're copying the result of the search.</p>
+
+      <p>I don't think this is just a cute analogy. It reorganizes how I'd plan a post-training pipeline. The frontier labs doing the big RL runs aren't doing "post-training"; they're doing <em>strategy search</em>, and the product of that search is a family of policies that can then be distilled into smaller / cheaper / more targeted students in a second phase that costs one or two orders of magnitude less. If you're a small team, you don't do the search phase at all; you pick an open-weight teacher whose search someone else paid for, and you run a short distillation phase on top of a cheap mid-train. My best guess is that in practice this is already how most <em>good</em> post-training workflows are structured, but the 2&times;2 lets you name it out loud.</p>
+
+      <h3 class="sub">Teacher-as-reward-model: the unhackable reward</h3>
+
+      <p>The other reframe I keep coming back to is that on-policy distillation quietly does something RL+RLHF spent four years trying and failing to do reliably: it produces <em>an unhackable reward model</em>. A learned reward model can always be Goodharted &mdash; the policy finds inputs that score well without producing the behavior the RM was supposed to represent. Reverse KL against a fixed teacher does not have this failure mode, because <em>zero KL is definitionally teacher-policy behavior</em>. You can't Goodhart a reward whose optimum is "behave exactly like this other model".</p>
+
+      <p>I think the <a href="https://arxiv.org/abs/2305.18290" target="_blank" rel="noopener">DPO</a> line of work has been trying to express something similar &mdash; "your language model is secretly a reward model" &mdash; but DPO still needs a preference dataset to define the reward direction. On-policy distillation makes the claim without the dataset: <em>any</em> instruction-tuned open-weight model can be a reward model in this sense, as long as you can call <code>compute_logprobs</code> on it. That's an unusually clean operator. I suspect it also generalizes badly in at least one direction (see counterpoints), but the fact that it generalizes at all is what turns on-policy distillation from "a technique for compressing a teacher" into "a technique for reusing any open-weight model as a shaping signal for any compatible student".</p>
+
+      <p class="principle">The reason the teacher-as-reward-model contract is structurally different from a learned RM is that reverse KL is a <em>policy-space</em> metric, not a reward-space metric. A learned RM maps sequences to scalars, and the policy can always find sequences that map to a high scalar without being good. Reverse KL minimizes a divergence between two distributions; the only way to drive it to zero is to <em>be</em> the teacher's distribution at every state the student visits. You can't exploit a divergence the way you can exploit a scalar. This is also why the post notes it as "unhackable in the sense that low KL always corresponds to a high probability of desirable behavior from the teacher model's point of view" &mdash; that's not a safety claim, it's a statement about the geometry of the objective.</p>
+    </div>
+  </section>
+
+  <!-- =========================== CONTINUAL =========================== -->
+  <section id="continual">
+  <!-- principle: on-policy distillation enables continual learning -->
+    <div class="wrap">
+      <h2 class="sec">continual <span class="desc-inline">// the self-distillation failure is the striking fact</span></h2>
+
+      <p>The experiment in the TML post I find most interesting is the one that's almost buried at the end of the "Discussion" section. I'll re-state it because when I first read it I thought I had misread it.</p>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">the surprise</span>
+        <p>Take Qwen3-32B. Use it to sample its <em>own</em> behavior on Tulu3 prompts at <code>temperature = 1.0</code> &mdash; this dataset is KL&thinsp;=&thinsp;0 against Qwen3-32B's policy, by construction. Now SFT Qwen3-32B on this dataset. <strong>IF-eval drops.</strong> Any practical learning rate above zero degrades the instruction-following performance of the same model you sampled from, despite the training data being <em>literally drawn from that model</em>.</p>
+      </div>
+
+      <p>My first reaction was "that can't be right; the expected gradient is zero". But the post's explanation is compact and I think correct: <em>the expected gradient is zero, but any finite batch has a non-zero empirical gradient</em>, and after one step the policy has moved off of its original distribution, which means subsequent batches are now genuinely off-policy, which means the same pathology SFT-on-teacher-data has kicks in &mdash; compounding divergence, degradation of whatever behavior was fragile at initialization. A model, even a frontier model, cannot safely SFT on its own output past one step because "its own output" isn't "its current output" anymore.</p>
+
+      <p>This is the result that makes on-policy distillation actually <em>important</em>, not just cost-efficient. For a continual-learning setup &mdash; you want to teach a production model new facts periodically without re-running post-training from scratch &mdash; the interesting question is "which of the available methods don't drift the behavior?" The post's table says SFT doesn't, LoRA SFT doesn't, mix-in ratios don't. The only method that provably doesn't is on-policy distillation with a <em>fixed</em> reference teacher:</p>
+
+      <ul>
+        <li>The teacher is frozen, so reverse KL is measured against a target that doesn't move.</li>
+        <li>Trajectories are sampled from the current student, which <em>does</em> move over training &mdash; but the reward signal (teacher log-probs at student states) is consistent across all student versions.</li>
+        <li>Convergence pushes the student toward the teacher's distribution in the student's own state distribution. Not toward "a moving target resampled from itself".</li>
+      </ul>
+
+      <p>The internal-assistant case in the post is the load-bearing experimental payout for all this. The trajectory &mdash; which I'd bet is close to what every enterprise deployment of an open-weight model looks like in 2026 &mdash; is:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Model state</th>
+              <th class="num">Internal QA (knowledge)</th>
+              <th class="num">IF-eval (chat)</th>
+              <th>What happened</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Qwen3-8B</td>
+              <td class="num">18%</td>
+              <td class="num">85%</td>
+              <td>as-released; no domain knowledge but strong chat</td>
+            </tr>
+            <tr>
+              <td>+ mid-train (100% internal docs)</td>
+              <td class="num">43%</td>
+              <td class="num">45%</td>
+              <td>learned the domain, crashed chat behavior</td>
+            </tr>
+            <tr>
+              <td>+ mid-train (70% docs + 30% chat mix)</td>
+              <td class="num">36%</td>
+              <td class="num">79%</td>
+              <td>best ratio found; still below the 85 baseline</td>
+            </tr>
+            <tr>
+              <td><b>+ mid-train (70/30) + on-policy distill from Qwen3-8B as teacher</b></td>
+              <td class="num"><b>41%</b></td>
+              <td class="num"><b>83%</b></td>
+              <td><b>behavior recovered, knowledge slightly improved</b></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="cap">Watch the last row against the second row: the "catastrophic forgetting" story of mid-training (IF-eval 85 &rarr; 45) is fully reverted (&rarr; 83), without losing the 41% internal QA knowledge. The teacher here is <em>an earlier version of the same model family</em>, which is exactly the on-hand tool every enterprise deployment already has.</p>
+
+      <p>The pattern the post suggests &mdash; <em>alternate between mid-train phases and distill phases</em> &mdash; sounds a lot like <a href="https://arxiv.org/abs/2009.04416" target="_blank" rel="noopener">Phasic Policy Gradient</a>, and I think that's the right precedent. For continual learning it's the only story I've seen that both (a) teaches new knowledge at the density SFT can teach and (b) doesn't drift the post-trained behavior over the learning horizon. Every other recipe I know of picks one.</p>
+
+      <p class="principle">The reason self-distillation fails and teacher-fixed distillation works is the same reason the 2&times;2 is a product of two independent axes. "On-policy" alone isn't enough &mdash; it guarantees the sampling quadrant but not the reward quadrant. When the sampling distribution and the reward target are both the current policy, any finite-batch perturbation becomes a self-reinforcing drift, because the reward target is re-drawn from whatever the policy just became. Fixing the teacher decouples them: the sampling quadrant tracks the student (good &mdash; the gradient touches states the student will actually visit at inference), but the reward quadrant is anchored to a target outside the student's own trajectory. That asymmetry is what makes on-policy distillation a stable continual-learning primitive, and it's exactly what "SFT on KL&thinsp;=&thinsp;0 self-samples" is missing.</p>
+    </div>
+  </section>
+
+  <!-- =========================== COUNTERPOINTS =========================== -->
+  <section id="counterpoints">
+  <!-- principle: teacher ceiling and tokenizer mismatch limit -->
+    <div class="wrap">
+      <h2 class="sec">counterpoints <span class="desc-inline">// where I'd push back on myself</span></h2>
+
+      <p>I've been selling the reframe hard, so let me steelman the places I'm least sure. A good thoughts piece survives its own counterpoints.</p>
+
+      <div class="grid c2">
+        <div class="card">
+          <h4>[A] The teacher ceiling is real, not rhetorical</h4>
+          <p>On-policy distillation can't find strategies the teacher doesn't have. Everything downstream of reverse KL is bounded above by the teacher's policy at every state. If you want a student that <em>beats</em> its teacher &mdash; which is the actual frontier-lab ambition &mdash; distillation is the wrong primitive on its own; you need a phase that searches in the space of strategies, and that phase <em>is</em> RL (or something like it). The TML post is honest about this. My worry is that the reframe is so pretty it tempts readers to skip the search phase entirely. For a small-team specialist that's fine; for anything that wants to advance the frontier it's not. <b>Distillation is a compressor; RL is a discoverer; they're not interchangeable</b>.</p>
+        </div>
+        <div class="card">
+          <h4>[B] Tokenizer &amp; support mismatch can silently break the contract</h4>
+          <p>"Any open-weight model can be a reward model" comes with the fine print that the teacher and student need a <em>compatible tokenization</em> and a teacher distribution that has non-negligible probability on the tokens the student is likely to sample. The post notes this quietly ("SFT, using forwards KL, adds support for new tokens. Reverse-KL methods can then perform mode seeking within the initialization's support"). Practically: if you pick a teacher from a different family and skip the mid-train that aligns supports, reverse KL will be dominated by tokens where the teacher assigns near-zero probability, the loss will look insane, and the student will learn pathological things. This is exactly the failure mode that doesn't show up in a demo and does show up on day 14 of a production run.</p>
+        </div>
+        <div class="card">
+          <h4>[C] Reverse KL is mode-seeking &mdash; and sometimes you want mode-covering</h4>
+          <p>Reverse KL punishes the student for putting mass where the teacher doesn't and ignores the teacher's mass that the student misses. That's great when the teacher has a single "right" behavior (instruction following, math step-by-step). It's worse when the task has multiple legitimate modes (creative writing, code with many valid implementations) and you'd actually benefit from the student hedging across them. Forward KL or symmetric divergence would be safer there, at the cost of the "unhackable" property I made a lot of noise about. I'd be careful not to over-generalize the TML post's findings to tasks where mode collapse is a real cost.</p>
+        </div>
+        <div class="card">
+          <h4>[D] Hiding RL's cost inside "the teacher" is a cost shell game</h4>
+          <p>The matched-LoRA-rank 50&ndash;100&times; number is distillation <em>given</em> an RL-trained teacher. Somebody paid for that teacher. If you count the teacher's training cost, the advantage of "RL &rarr; distill" over "just RL" is about the marginal saving on the second phase, not an absolute win. The post's framing is defensible &mdash; "we're pricing the last stage of training in isolation" &mdash; but when people quote "50&ndash;100&times; cheaper than RL" in a pitch deck they rarely mean "<em>after</em> someone else has paid for the RL teacher". For small teams that ride open-weight teachers the shell game doesn't matter, because you don't pay. For frontier labs it matters a lot, because they <em>are</em> the someone-else. Be honest about which one you are.</p>
+        </div>
+        <div class="card">
+          <h4>[E] The "reasoning model teacher, non-reasoning student" case is under-specified</h4>
+          <p>The post's math experiment uses Qwen3-32B (non-thinking) as teacher for Qwen3-8B-Base. What about a thinking-mode teacher like Qwen3-32B-Thinking? Reverse KL over thinking tokens seems obviously useful &mdash; you'd be distilling the teacher's reasoning trace &mdash; but also seems obviously fragile, because "reasoning in the student's vocabulary" is a moving target as the student learns. I'd want to see that ablation before I believe on-policy distillation composes cleanly with reasoning-mode teachers. My guess is that it does, but at the cost of some careful token masking that isn't in the Tinker cookbook example.</p>
+        </div>
+        <div class="card">
+          <h4>[F] The self-distillation-degradation result deserves more diagnosis</h4>
+          <p>The "SFT on KL&thinsp;=&thinsp;0 self-samples degrades" finding is extraordinary, and the explanation the post offers &mdash; finite-batch variance flips on-policy to off-policy after one step &mdash; is plausible but not fully proven. An alternative hypothesis I'd want ruled out: the finite learning rate + weight-decay + optimizer momentum create <em>systematic</em> drift independent of batch noise, so even zero-variance-in-the-limit SFT would still degrade. If that's the mechanism, the fix is in the optimizer, not in the sampling / reward structure. I don't think it is &mdash; but I haven't seen the ablation, so I'm keeping this as an open question rather than a confident endorsement of the post's explanation.</p>
+        </div>
+      </div>
+
+      <p style="margin-top:18px">If I had to bet on which of these six matters most for a practitioner, it's [B]. The reframe makes on-policy distillation look like a drop-in for SFT + RL, and mechanically it almost is &mdash; but the tokenizer-and-support contract is the quiet part that separates "it works" from "it silently diverges". That is not a theoretical worry; it's the kind of bug that takes a week to localize because the loss curves look fine.</p>
+    </div>
+  </section>
+
+  <!-- =========================== SO WHAT =========================== -->
+  <section id="sowhat">
+  <!-- principle: small teams plan post-training around the 2x2 -->
+    <div class="wrap">
+      <h2 class="sec">so what <span class="desc-inline">// the change in how you'd plan a pipeline</span></h2>
+
+      <p>If I had to boil the whole piece down to one concrete change in behavior, it's this: stop planning post-training as <em>"SFT phase, then optionally an RL phase"</em> and start planning it as <em>"which quadrant of the 2&times;2 does each phase belong in, and why that one"</em>. For a small team shipping an open-weight-derived specialist (the case I care about most), the pipeline I'd now default to looks like:</p>
+
+      <div class="pipe">
+        <div class="step">
+          <div class="n">01</div>
+          <h5>Mid-train (off-policy, dense)</h5>
+          <p>SFT on the specialist domain data you actually have &mdash; company docs, patient notes, codebase-specific patterns. This is the quadrant where "off-policy &times; dense" is genuinely the right answer, because you're <em>adding support</em> for tokens the base model never saw. Accept that this will trash post-trained behavior in the base; that's what the next step is for.</p>
+        </div>
+        <div class="step">
+          <div class="n">02</div>
+          <h5>On-policy distill (on-policy, dense)</h5>
+          <p>Use the base model before mid-training &mdash; or a sibling instruct-tuned model &mdash; as a frozen teacher. Sample from the mid-trained student on a broad prompt distribution (Tulu3-style). Reward = negative per-token reverse KL. This restores the post-training behavior you just clobbered, at roughly 10&times; fewer steps than a fresh post-train would need. Alternate with more mid-train passes as the knowledge distribution shifts.</p>
+        </div>
+        <div class="step">
+          <div class="n">03</div>
+          <h5>Targeted RL (on-policy, sparse) &mdash; only where dense signal isn't available</h5>
+          <p>Keep RL for the small set of tasks where the teacher's behavior genuinely isn't what you want &mdash; novel tool-use, multi-turn negotiation, whatever the dense signal can't reach. Price RL correctly: you're paying for <em>search</em>, so run it with a verifier or a strong RM, and plan for the RL-trained result to be distilled back into a cheaper student once the strategy is found.</p>
+        </div>
+        <div class="step">
+          <div class="n">04</div>
+          <h5>Continual loop &mdash; alternate mid-train &amp; distill over time</h5>
+          <p>When new domain data arrives, loop back to step 1. The fixed-teacher-reverse-KL contract is what keeps this stable across many iterations &mdash; unlike SFT-on-self-samples, which drifts. Over months, the teacher identity might roll forward (you'd swap in a newer open-weight instruct model) but for any given run it's frozen.</p>
+        </div>
+      </div>
+
+      <p style="margin-top:14px">What's different from the stack I'd have written a year ago is mostly that step 2 replaces a vague "RL on preferences" block. A year ago the honest answer for "how do we restore IF-eval after mid-training" was "hire someone who's done RLHF before, or accept the 45% number". Today the honest answer is <em>"4 lines on top of your existing RL training loop, a frozen teacher of the same family, and a few hours of compute"</em>. That's a qualitative change in what a small team can plan for.</p>
+
+      <p>My take, which I'll sign: for the overwhelming majority of post-training workloads outside of frontier labs &mdash; enterprise assistants, coding specialists, domain-tuned helpers &mdash; <em>on-policy distillation should be the default, and SFT and RL should be treated as the special cases where it doesn't apply</em>. SFT is the special case where the student doesn't yet have enough support in the teacher's distribution; RL is the special case where no teacher exists that already has the behavior you want. Those cases are real, but they're narrower than the last five years of practitioner writing would have you believe.</p>
+
+      <p class="principle">Why this specific order instead of some other permutation? The ordering is forced by the pain-point-of-each-quadrant logic in <a href="#axes">#axes</a>. You mid-train first because that's the only phase that can add new tokens to the student's support &mdash; on-policy methods can only rearrange mass within the initialization's support, they can't create it. You distill second because you need the student's own state distribution to exist first (otherwise "on-policy" is meaningless), and because the mid-train is what creates the behavior regression the distill is going to repair. RL goes last because it's the most expensive phase per bit of behavior learned, so you only spend it on behavior no cheaper phase can produce. Swap any of those and you either fail to add support, pay too much for something a cheaper phase could have done, or drift the post-training behavior without a repair step. The ordering is a theorem about the 2&times;2, not a style preference.</p>
+    </div>
+  </section>
+
+  <!-- =========================== TAKEAWAYS =========================== -->
+  <section id="takeaways">
+    <div class="wrap">
+      <h2 class="sec">takeaways <span class="desc-inline">// signed off</span></h2>
+      <div class="grid c2">
+        <div class="card">
+          <h4>[01] The 2&times;2 is the product</h4>
+          <p>If you read nothing else from the TML post, read the comparison table and rotate it into a 2&times;2 of sampling policy &times; reward density. The existence of the on-policy&middot;dense quadrant is the contribution. The specific implementation (reverse KL as advantage, teacher <code>compute_logprobs</code> as reward) is the first honest inhabitant of the quadrant; there will be better ones. The <em>quadrant</em> stays.</p>
+        </div>
+        <div class="card">
+          <h4>[02] Density is the cost-dominant axis, and it's under-priced elsewhere</h4>
+          <p>The matched-LoRA-rank experiment is the cleanest isolation of the density variable I've seen, and it's worth two orders of magnitude of compute. Most public-facing writing about post-training treats sampling (SFT vs RL) as the interesting axis and density as an afterthought. The ranking should flip: density first, sampling second, everything else (loss functional, KL direction, batch-size tricks) third.</p>
+        </div>
+        <div class="card">
+          <h4>[03] The unhackable-reward property is a quiet safety story</h4>
+          <p>Reward hacking is the load-bearing risk in RLHF-style pipelines. Reverse KL against a fixed teacher doesn't have a hackable direction in the reward, because its optimum is policy-matching rather than scalar-maximizing. That's not a complete safety story &mdash; a bad teacher produces a bad student quickly and confidently &mdash; but it removes one entire class of failure from the pipeline. I don't think the post leans hard enough on this.</p>
+        </div>
+        <div class="card">
+          <h4>[04] On-policy distillation is the missing primitive for continual learning</h4>
+          <p>The SFT-on-self-samples degradation result is the strongest argument I've seen for why "just keep SFT-ing on new data" is a fundamentally broken plan for continual learning. On-policy distillation with a <em>frozen</em> teacher is the least-bad tool on the table right now &mdash; not because it's the optimum, but because every alternative on the table drifts. If someone ships a better continual-learning primitive in 2027, my guess is it'll be an evolution of this one, not a return to SFT.</p>
+        </div>
+      </div>
+
+      <div class="callout" data-variant="ok" style="margin-top:28px">
+        <span class="t">// end of notebook</span>
+        <p>The reason I wrote this as a thoughts piece rather than a paper deep-dive is that the TML blog is already the deep-dive &mdash; clean pseudocode, clear ablations, honest caveats. The part that wasn't in the post, and that I think travels further than the 9&ndash;30&times; headline, is the reframe of the 2&times;2 and the ordering consequence for how a small team should structure a year-long post-training stack. If I'm right about which quadrant is the right default, a lot of 2024-era pipeline advice reads as already-legacy. If I'm wrong, the specific failure modes in <a href="#counterpoints">#counterpoints</a> are where I'll have been wrong, and I'd want to know which ones first.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== REFERENCES =========================== -->
+  <section id="references">
+    <div class="wrap">
+      <h2 class="sec">references</h2>
+      <ul>
+        <li>Primary &middot; <a href="https://thinkingmachines.ai/blog/on-policy-distillation/" target="_blank" rel="noopener">Kevin Lu &amp; Thinking Machines Lab. <em>On-Policy Distillation</em>. Thinking Machines Lab: Connectionism, Oct 2025</a>. The post this piece is reacting to.</li>
+        <li>Code &middot; <a href="https://github.com/thinking-machines-lab/tinker-cookbook/tree/v0.2.1/tinker_cookbook/recipes/distillation" target="_blank" rel="noopener">tinker-cookbook@v0.2.1 / recipes / distillation</a> &mdash; CLI wrapper and Qwen3-8B recipes. The load-bearing function is <a href="https://github.com/thinking-machines-lab/tinker-cookbook/blob/v0.2.1/tinker_cookbook/distillation/train_on_policy.py" target="_blank" rel="noopener"><code>incorporate_kl_penalty</code> in <code>distillation/train_on_policy.py</code></a> at the same tag.</li>
+        <li>Adjacent &middot; <a href="https://thinkingmachines.ai/blog/lora/" target="_blank" rel="noopener">TML &mdash; <em>LoRA Without Regret</em></a> &mdash; where the "O(1) vs O(N) bits per episode" information-theoretic framing comes from. Required reading if you want the density argument in full.</li>
+        <li>Prior on-policy distill &middot; <a href="https://arxiv.org/abs/2306.13649" target="_blank" rel="noopener">Agarwal et al. <em>On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes</em> (arXiv:2306.13649, 2023)</a> &mdash; the loss-function comparison the TML post cites.</li>
+        <li>Prior on-policy distill &middot; <a href="https://arxiv.org/abs/2306.08543" target="_blank" rel="noopener">Gu et al. <em>MiniLLM: Knowledge Distillation of Large Language Models</em> (arXiv:2306.08543, 2023)</a> &mdash; the reverse-KL analysis (mode-seeking, exposure-bias reduction).</li>
+        <li>Qwen3 &middot; <a href="https://arxiv.org/abs/2505.09388" target="_blank" rel="noopener">Qwen Team. <em>Qwen3 Technical Report</em> (arXiv:2505.09388, 2025)</a> &mdash; source of the Table 21 numbers the TML post reproduces (55.0 / 67.6 / 74.4 on AIME'24; 17,920 GPU-hours for RL).</li>
+        <li>DAGGER &middot; <a href="https://arxiv.org/abs/1011.0686" target="_blank" rel="noopener">Ross et al. <em>A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning</em> (arXiv:1011.0686, 2010)</a> &mdash; the original iterative-SFT-with-teacher-evaluation pattern.</li>
+        <li>Process rewards &middot; <a href="https://arxiv.org/abs/2305.20050" target="_blank" rel="noopener">Lightman et al. <em>Let's Verify Step by Step</em> (arXiv:2305.20050, 2023)</a> &mdash; the "dense per-step reward beats sparse outcome reward" precedent the TML post cites.</li>
+        <li>Forgetting &middot; <a href="https://arxiv.org/abs/2509.04259" target="_blank" rel="noopener">Shenfeld et al. <em>RL's Razor: Why Online Reinforcement Learning Forgets Less</em> (arXiv:2509.04259, 2025)</a>.</li>
+        <li>Forgetting &middot; <a href="https://arxiv.org/abs/2510.18874" target="_blank" rel="noopener">Chen et al. <em>Retaining by Doing: The Role of On-Policy Data in Mitigating Forgetting</em> (arXiv:2510.18874, 2025)</a>.</li>
+        <li>Caveat &middot; <a href="https://arxiv.org/abs/2305.15717" target="_blank" rel="noopener">Gudibande et al. <em>The False Promise of Imitating Proprietary LLMs</em> (arXiv:2305.15717, 2023)</a> &mdash; the "off-policy imitation captures style, not accuracy" result that makes the density axis bite.</li>
+        <li>DPO &middot; <a href="https://arxiv.org/abs/2305.18290" target="_blank" rel="noopener">Rafailov et al. <em>Direct Preference Optimization: Your Language Model is Secretly a Reward Model</em> (arXiv:2305.18290, 2023)</a> &mdash; the sibling "LM-as-reward" framing.</li>
+        <li>PPG &middot; <a href="https://arxiv.org/abs/2009.04416" target="_blank" rel="noopener">Cobbe et al. <em>Phasic Policy Gradient</em> (arXiv:2009.04416, 2020)</a> &mdash; the phase-alternation precedent for the continual-learning loop.</li>
+      </ul>
+    </div>
+  </section>
+
+</div><!-- /.shell -->
+
+<script src="../../assets/theme.js"></script>
+</body>
+</html>

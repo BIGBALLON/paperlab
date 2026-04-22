@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Kimi K2 post-training isn't RLHF in a new jacket: a 23k-tool agentic data factory, a closed-loop self-critique rubric reward, and a 1T checkpoint that broadcasts in under 30 seconds. Traced from paper to config.json." />
+<meta name="theme-color" content="#05070a" />
+<title>Kimi K2 · Why 85 on Creative Writing Isn&rsquo;t Luck — thinklab</title>
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+<link rel="canonical" href="/articles/kimi-k2/" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" /></noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" />
+<link rel="stylesheet" href="../../assets/theme.css" />
+<script defer src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="(window.requestIdleCallback||function(f){return setTimeout(f,0)})(function(){renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});});"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+</head>
+<body class="page-article">
+
+<a class="home-btn" href="../../" aria-label="Back to index"><span class="arrow">←</span><span class="label">cd&nbsp;~</span></a>
+<div id="scroll-progress" aria-hidden="true"></div>
+<button id="to-top" aria-label="back to top" title="back to top">↑</button>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="G-blue"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#1b2b52"/><stop offset="1" stop-color="#0a1124"/></linearGradient>
+    <linearGradient id="G-violet" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#2e1a55"/><stop offset="1" stop-color="#180c32"/></linearGradient>
+    <linearGradient id="G-teal"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0d3d33"/><stop offset="1" stop-color="#062018"/></linearGradient>
+    <linearGradient id="G-orange" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4a2414"/><stop offset="1" stop-color="#22100a"/></linearGradient>
+    <linearGradient id="G-pink"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4e1a33"/><stop offset="1" stop-color="#26091a"/></linearGradient>
+    <linearGradient id="G-slate"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#11162a"/><stop offset="1" stop-color="#070a14"/></linearGradient>
+    <linearGradient id="G-green"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0b3a22"/><stop offset="1" stop-color="#051f12"/></linearGradient>
+    <linearGradient id="G-rainbow" x1="0" x2="1">
+      <stop offset="0"   stop-color="#39ff88"/>
+      <stop offset=".33" stop-color="#00e5ff"/>
+      <stop offset=".66" stop-color="#9d7bff"/>
+      <stop offset="1"   stop-color="#ff3fa4"/>
+    </linearGradient>
+    <linearGradient id="G-neon-green" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#1a2a1e"/><stop offset="1" stop-color="#0a1710"/></linearGradient>
+    <linearGradient id="G-glow-blue"  x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#00e5ff" stop-opacity=".35"/><stop offset="1" stop-color="#00e5ff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="G-glow-green" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#39ff88" stop-opacity=".32"/><stop offset="1" stop-color="#39ff88" stop-opacity="0"/></linearGradient>
+    <radialGradient id="G-hot-green" cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#39ff88" stop-opacity=".6"/><stop offset="1" stop-color="#39ff88" stop-opacity="0"/></radialGradient>
+    <radialGradient id="G-hot-cyan"  cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#00e5ff" stop-opacity=".55"/><stop offset="1" stop-color="#00e5ff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="G-hot-mag"   cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#ff3fa4" stop-opacity=".55"/><stop offset="1" stop-color="#ff3fa4" stop-opacity="0"/></radialGradient>
+    <filter id="F-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dx="0" dy="2" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".5"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-neon" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="b1"/>
+      <feGaussianBlur stdDeviation="1.5" result="b2"/>
+      <feMerge><feMergeNode in="b1"/><feMergeNode in="b2"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow-green" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="0 0 0 0 .22  0 0 0 0 1  0 0 0 0 .55  0 0 0 .7 0" result="cb"/>
+      <feMerge><feMergeNode in="cb"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow-cyan" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="0 0 0 0 0  0 0 0 0 .9  0 0 0 0 1  0 0 0 .7 0" result="cb"/>
+      <feMerge><feMergeNode in="cb"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="P-grid" width="22" height="22" patternUnits="userSpaceOnUse">
+      <path d="M 22 0 L 0 0 0 22" fill="none" stroke="#1a2338" stroke-width=".5"/>
+      <circle cx="0" cy="0" r="1" fill="#2a3458" opacity=".55"/>
+    </pattern>
+    <pattern id="P-dots" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#2a3458" opacity=".55"/>
+    </pattern>
+    <pattern id="P-scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <path d="M 0 4 L 4 0" stroke="#39ff88" stroke-width=".3" opacity=".18"/>
+    </pattern>
+    <pattern id="P-circuit" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M 0 20 L 20 20 L 20 0 M 40 60 L 40 40 L 60 40" fill="none" stroke="#1e3a52" stroke-width=".6" opacity=".5"/>
+      <circle cx="20" cy="20" r="1.4" fill="#00e5ff" opacity=".35"/>
+      <circle cx="40" cy="40" r="1.4" fill="#39ff88" opacity=".35"/>
+    </pattern>
+    <marker id="A-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#00e5ff"/></marker>
+    <marker id="A-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9d7bff"/></marker>
+    <marker id="A-teal"   viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#39ff88"/></marker>
+    <marker id="A-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffb020"/></marker>
+    <marker id="A-green"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#39ff88"/></marker>
+    <marker id="A-mag"    viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ff3fa4"/></marker>
+    <marker id="A-amber"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffd166"/></marker>
+    <marker id="arrow"    viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c9d1d9"/></marker>
+    <symbol id="S-corner" viewBox="0 0 14 14">
+      <path d="M 1 6 L 1 1 L 6 1" fill="none" stroke="#39ff88" stroke-width="1.2"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="shell">
+
+  <!-- =========================== HERO =========================== -->
+  <header class="hero">
+    <div class="hero-term">
+      <div class="term-bar">
+        <span class="term-dot d-r"></span>
+        <span class="term-dot d-y"></span>
+        <span class="term-dot d-g"></span>
+        <span class="term-title">~/moonshotai/kimi-k2 — tech_report.pdf</span>
+      </div>
+      <div class="term-body">
+        <div class="term-prompt">
+          <span class="path">reader@thinklab</span>:<span class="cmd">~/kimi-k2</span>$ cat paper.md | render --theme=geek --focus=post-training<span class="cursor"></span>
+        </div>
+        <h1>Kimi K2 &middot; Why 85 on Creative Writing Isn&rsquo;t Luck</h1>
+        <p class="sub">
+        <span class="line">MuonClip stabilizes the 1T MoE base, but the real story is in post-training: a 23000-tool agentic data factory, a closed-loop self-critique rubric reward. This article follows that single thread.</span>
+        </p>
+        <div class="hero-badges">
+          <span class="hero-badge" data-variant="green">1T / 32B · MoE</span>
+          <span class="hero-badge" data-variant="cyan">MuonClip τ=100</span>
+          <span class="hero-badge" data-variant="magenta">Self-Critique Rubric</span>
+          <span class="hero-badge" data-variant="violet">23k Tools</span>
+        </div>
+        <div class="hero-toc">
+          <a href="#overview">overview</a>
+          <a href="#arch">architecture</a>
+          <a href="#pretrain">muonclip</a>
+          <a href="#data">data factory</a>
+          <a href="#rl">rl loop</a>
+          <a href="#eval">evaluation</a>
+          <a href="#code">code</a>
+          <a href="#takeaways">takeaways</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================== TL;DR =========================== -->
+  <div class="callout" data-variant="k">
+    <span class="t">TL;DR</span>
+    <p>Kimi K2 is a 1.04T-total / 32B-active MoE — essentially "DeepSeek-V3 with half the heads". The pre-training headliner is <b>MuonClip</b>, using qk-clip to tame Muon's exploding attention logits: 15.5T tokens without a single loss spike. But what actually opens the gap is the post-training pipeline: <b>3000+ real MCP tools plus 20000+ synthetic ones</b>, funnelled through an LLM judge to reject-sample agentic trajectories; a <b>closed loop between verifiable reward and self-critique rubric reward</b> — the critic is continuously recalibrated by on-policy rollouts on verifiable tasks, then used to score subjective ones. The eye-popping 85.0 on Creative Writing isn't an accident; it's what falls out of that loop.</p>
+  </div>
+
+  <!-- =========================== OVERVIEW =========================== -->
+  <section id="overview">
+    <div class="wrap">
+      <h2 class="sec">overview <span class="desc-inline">// why this paper matters</span></h2>
+            <p>My first reaction to Kimi K2 was "another 1T MoE". By the time I closed the tech report, I felt differently: this is less a paper and more Moonshot open-sourcing their entire post-training playbook. The architecture — <em>MLA attention, 384 experts choose 8, 61 layers</em> — is basically a DeepSeek-V3 re-parameterization. The actual product is §3.</p>
+
+            <p>So this article's structure deliberately doesn't mirror the paper's. I'll cover the base model quickly, spend real ink on MuonClip (the one genuinely new optimizer-level contribution), and reserve the longest stretch for <b>agentic data synthesis and closed-loop RL</b>. That's the real heart of K2.</p>
+
+      <div class="grid c3">
+        <div class="card">
+          <h4>[base] 1T / 32B MoE</h4>
+            <p>61 layers (1 dense + 60 MoE), hidden 7168, MLA attention, 384 experts with top-8 routing (sparsity 48), fp8 E4M3 storage. <span class="hi">Versus DeepSeek-V3: half the heads, 50% more experts, 13% fewer activated params.</span></p>
+        </div>
+        <div class="card">
+          <h4>[pretrain] MuonClip + 15.5T</h4>
+            <p>Muon hits a wall of exploding attention logits at scale — Moonshot's answer is <b>qk-clip</b>: derive a per-head scaling factor from the max logit and rewrite <code>W_q</code>/<code>W_k</code> after every step. <span class="hi">The entire 15.5T-token run has zero loss spikes.</span></p>
+        </div>
+        <div class="card">
+          <h4>[post] agentic factory + closed RL</h4>
+            <p>23k+ tools × thousands of agents × multi-turn trajectories × LLM-judge filtering feed SFT; then RL uses verifiable rewards to recalibrate a critic that grades the subjective tasks. <span class="hi">That's why K2 jumps on creative writing and multi-turn tool use simultaneously.</span></p>
+        </div>
+      </div>
+
+      <!-- HERO diagram: three lanes of K2 training -->
+      <div class="svg-wrap">
+        <svg viewBox="0 0 1200 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three lanes of Kimi K2 training: base, muonclip pretraining, agentic post-training">
+          <rect x="0" y="0" width="1200" height="340" fill="url(#P-grid)" opacity=".45"/>
+          <g>
+            <rect x="20" y="8" width="1160" height="22" rx="3" fill="#0a0e14" stroke="rgba(57,255,136,.22)"/>
+            <text x="36" y="23" fill="#39ff88" font-size="10" font-weight="700" letter-spacing=".14em">◉ KIMI-K2 · THREE LANES</text>
+            <text x="600" y="23" fill="#a9afc3" font-size="10" text-anchor="middle" letter-spacing=".08em">arch = inherited · MuonClip = new · Post-training = the real work</text>
+            <text x="1164" y="23" fill="#8b949e" font-size="10" text-anchor="end" letter-spacing=".06em">fig: overview/main</text>
+          </g>
+
+          <!-- Lane 1: Architecture -->
+          <g transform="translate(40,60)">
+            <rect x="0" y="0" width="340" height="250" rx="10" fill="url(#G-blue)" stroke="#4d6ed6" stroke-opacity=".6"/>
+            <g transform="translate(14,-10)">
+              <rect x="0" y="0" width="186" height="20" rx="3" fill="#070c1e" stroke="#7c9cff"/>
+              <text x="10" y="14" fill="#7c9cff" font-size="10" font-weight="700" letter-spacing=".14em">[A] ARCHITECTURE · INHERITED</text>
+            </g>
+            <g transform="translate(20,28)" fill="#cfd4ec" font-size="11.5">
+              <text y="16" font-weight="700" fill="#fff">1.04T total · 32B active</text>
+              <text y="40">61 layers · 1 dense + 60 MoE</text>
+              <text y="58">hidden 7168 · MLA q=1536 kv=512</text>
+              <text y="76">64 heads · v_head 128 · rope θ=5e4</text>
+              <text y="94">384 experts · top-8 · shared 1</text>
+              <text y="112">sparsity 48 · routed scale 2.827</text>
+              <text y="130">aux_loss α=0.001 · sigmoid router</text>
+              <text y="148">fp8 e4m3 · 128×128 block</text>
+              <text y="172" fill="#ffcf9a" font-weight="700">vs DeepSeek-V3 → fewer heads, more experts</text>
+              <text y="190" fill="#ffcf9a">heads −50% · experts +50% · active −13%</text>
+              <text y="214" font-size="10" fill="#8fb3ff">source: config.json (HF)</text>
+            </g>
+          </g>
+
+          <!-- Lane 2: MuonClip -->
+          <g transform="translate(400,60)">
+            <rect x="0" y="0" width="340" height="250" rx="10" fill="url(#G-teal)" stroke="#39ff88" stroke-opacity=".55"/>
+            <g transform="translate(14,-10)">
+              <rect x="0" y="0" width="196" height="20" rx="3" fill="#051710" stroke="#39ff88"/>
+              <text x="10" y="14" fill="#39ff88" font-size="10" font-weight="700" letter-spacing=".14em">[B] MUONCLIP · NEW OPTIMIZER</text>
+            </g>
+            <g transform="translate(20,28)" fill="#b8f0d9" font-size="11.5">
+              <text y="16" font-weight="700" fill="#fff">Muon + qk-clip</text>
+              <text y="40">Newton-Schulz for hidden layers</text>
+              <text y="58">per-head γ = min(1, τ / Smax)</text>
+              <text y="76">τ = 100  (threshold for max logit)</text>
+              <text y="94">MLA-aware: q/k_c × √γ · q_r × γ</text>
+              <text y="112">k_r untouched (shared rotary)</text>
+              <text y="136" fill="#ffcf9a" font-weight="700">result: 15.5T tokens, zero spike</text>
+              <text y="154" fill="#7cd8a8">max logit ↓ into stable range</text>
+              <text y="172" fill="#7cd8a8">after ~30% of training steps</text>
+              <text y="196" fill="#ffcf9a" font-weight="700">drift: blog/abstract show α-version;</text>
+              <text y="214" fill="#ffcf9a">Algorithm 1 uses per-head √γ form</text>
+            </g>
+          </g>
+
+          <!-- Lane 3: Post-training -->
+          <g transform="translate(760,60)">
+            <rect x="0" y="0" width="400" height="250" rx="10" fill="url(#G-pink)" stroke="#ff3fa4" stroke-opacity=".55"/>
+            <g transform="translate(14,-10)">
+              <rect x="0" y="0" width="240" height="20" rx="3" fill="#180611" stroke="#ff3fa4"/>
+              <text x="10" y="14" fill="#ff3fa4" font-size="10" font-weight="700" letter-spacing=".14em">[C] POST-TRAINING · THE PRODUCT</text>
+            </g>
+            <g transform="translate(20,28)" fill="#ffd3e6" font-size="11.5">
+              <text y="16" font-weight="700" fill="#fff">agentic SFT · joint RL · closed loop</text>
+              <text y="40">3000+ real MCP tools · 20000+ synth</text>
+              <text y="58">thousands of agents × diverse toolsets</text>
+              <text y="76">rubric tasks · LLM-judge filter</text>
+              <text y="94">hybrid: k8s sandbox for real code</text>
+              <text y="118" font-weight="700" fill="#fff">RL: verifiable + self-critique rubric</text>
+              <text y="136">math / SWE / logic = rule-verified</text>
+              <text y="154">creative / open-ended = critic-judged</text>
+              <text y="172" fill="#ffb3d4">critic kept honest by on-policy RLVR</text>
+              <text y="196" fill="#ffb3d4">budget control · PTX loss · temp decay</text>
+              <text y="220" fill="#ff9fcc" font-weight="700">→ Creative Writing 85.0 · τ2 66.1 · SWE-V 65.8</text>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <p class="cap">Notice the three lanes are <em>not</em> equal in novelty: [A] architecture is a re-parameterization of DeepSeek-V3 (same class), [B] MuonClip is the one-post-update-loop fix Moonshot actually invented, and [C] post-training is where Moonshot's moat lives. The cover shape of the article follows that asymmetry — short on [A], medium on [B], longest on [C].</p>
+
+            <p style="margin-top:18px">One line: <b>architecture is inherited, the base is stabilized by MuonClip, the novel work lives in §3</b>. The rest of this article follows that order.</p>
+    </div>
+  </section>
+
+  <!-- =========================== ARCHITECTURE =========================== -->
+  <section id="arch">
+  <!-- principle: MoE 1T base; MuonClip stabilizes attention logits -->
+    <div class="wrap">
+      <h2 class="sec">architecture <span class="desc-inline">// the base, briefly</span></h2>
+            <p>I'll only answer three questions about the base: <em>1. what did they change vs DeepSeek-V3; 2. why; 3. is it verifiable from config.json</em>.</p>
+
+            <p class="principle">The reason the base deserves so little space is that <strong>nothing in the architecture is new</strong>. K2 inherits MLA, noaux_tc sigmoid routing, and even the <code>DeepseekV3ForCausalLM</code> modeling class verbatim. What K2 <em>picked</em> is a specific set of five knob positions to differ on — halved heads, bumped experts, shorter dense prefix, higher rope_theta, Muon-over-AdamW. Each of these is a one-line config edit; the contribution is the <em>combination</em>, not the pieces. Without this framing the rest of the section reads as trivia; with it, every number is a comparative move.</p>
+
+      <h3 class="sub">
+      1. MLA + 384 experts + halved heads
+      </h3>
+            <p>K2's architecture class is literally <code>DeepseekV3ForCausalLM</code> — the HF <code>config.json</code> copies it verbatim and mainly changes three numbers: <b>experts 256 → <span>384</span></b> (sparsity 8 → 48), <b>attention heads 128 → 64</b>, <b>dense prefix 3 layers → 1 layer</b>. MLA knobs (q_lora_rank=1536, kv_lora_rank=512, v_head_dim=128) are kept; rope θ is bumped from DeepSeek-V3's 10000 to <span>50000</span> (one-line change worth flagging).</p>
+
+      <pre><code class="language-json">{
+  "architectures": ["DeepseekV3ForCausalLM"],
+  "num_hidden_layers": 61,
+  "first_k_dense_replace": 1,
+  "hidden_size": 7168,
+  "intermediate_size": 18432,
+  "moe_intermediate_size": 2048,
+  "num_attention_heads": 64,
+  "num_key_value_heads": 64,
+  "q_lora_rank": 1536,
+  "kv_lora_rank": 512,
+  "qk_nope_head_dim": 128,
+  "qk_rope_head_dim": 64,
+  "v_head_dim": 128,
+  "n_routed_experts": 384,
+  "num_experts_per_tok": 8,
+  "n_shared_experts": 1,
+  "routed_scaling_factor": 2.827,
+  "scoring_func": "sigmoid",
+  "topk_method": "noaux_tc",
+  "aux_loss_alpha": 0.001,
+  "rope_theta": 50000.0,
+  "rope_scaling": { "type": "yarn", "factor": 32.0, "original_max_position_embeddings": 4096 },
+  "quantization_config": { "quant_method": "fp8", "fmt": "e4m3", "weight_block_size": [128, 128] }
+}</code></pre>
+
+            <p>Two details worth pausing on: <code>topk_method: "noaux_tc"</code> plus <code>aux_loss_alpha: 0.001</code> — this is DeepSeek-V3's "auxiliary-loss-free load balancing" routing, keeping only a tiny α as soft guidance; and <code>rope_scaling</code> is YaRN factor=32 over original context=4096 — meaning <b>pre-training actually happens at a 4k window</b>, with 128k extended afterwards via YaRN.</p>
+
+      <h3 class="sub">
+      2. Why cut heads, add experts
+      </h3>
+            <p>Paper §2.3 is refreshingly blunt: <b>at 128k context (table stakes for agentic use cases), doubling heads from 64 to 128 only buys 0.5%–1.2% validation-loss improvement while costing 83% more FLOPs</b>. Going the other direction on experts, sparsity 8 → 48 saves 1.69×–1.15× FLOPs at iso-loss. So Moonshot makes a very utilitarian trade: <span class="hi">move compute from attention to MoE</span>. This, I think, is the base's nicest design call.</p>
+
+      <div class="svg-wrap">
+        <svg viewBox="0 0 1240 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Kimi K2 versus DeepSeek-V3 architectural diff: K2 halves the attention heads from 128 to 64, adds 50 percent more experts (256 to 384), drops dense prefix from 3 to 1, bumps rope_theta from 10,000 to 50,000, and ends up with 13 percent fewer activated parameters per forward pass">
+          <rect x="0" y="0" width="1240" height="340" fill="url(#G-slate)"/>
+          <rect x="0" y="0" width="1240" height="340" fill="url(#P-dots)"/>
+
+          <g>
+            <rect x="16" y="10" width="1208" height="22" rx="3" fill="#0a0e14" stroke="rgba(124,156,255,.22)"/>
+            <text x="28" y="25" fill="#7c9cff" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" letter-spacing=".14em">&#9678; KIMI K2 vs DEEPSEEK-V3 &middot; five deltas &middot; same MLA + noaux_tc skeleton</text>
+            <text x="1222" y="25" fill="#8b949e" font-family="'JetBrains Mono',monospace" font-size="10" text-anchor="end" letter-spacing=".06em">fig: arch/diff</text>
+          </g>
+
+          <!-- DeepSeek-V3 column -->
+          <g transform="translate(24,60)">
+            <rect width="570" height="250" rx="10" fill="url(#G-slate)" stroke="#7c9cff" stroke-opacity=".4"/>
+            <text x="20" y="24" fill="#7c9cff" font-size="11" font-weight="700" font-family="'JetBrains Mono',monospace" letter-spacing=".14em">DEEPSEEK-V3 (reference)</text>
+            <foreignObject x="20" y="40" width="530" height="200">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;color:#cfd4ec">
+                <div><span style="color:#7c9cff">params:</span> 671B total / 37B active</div>
+                <div><span style="color:#7c9cff">layers:</span> 61 &nbsp; <span style="color:#7c9cff">dense prefix:</span> 3</div>
+                <div><span style="color:#7c9cff">attention:</span> MLA, <strong style="color:#fff">128 heads</strong></div>
+                <div><span style="color:#7c9cff">MoE:</span> <strong style="color:#fff">256 routed + 1 shared, top-8</strong></div>
+                <div><span style="color:#7c9cff">sparsity:</span> 8 (of 256 chosen)</div>
+                <div><span style="color:#7c9cff">rope_theta:</span> <strong style="color:#fff">10,000</strong></div>
+                <div><span style="color:#7c9cff">optimizer:</span> AdamW</div>
+                <div style="margin-top:8px;color:#8fb3ff;font-size:11px">the reference K2 reparameterizes - same class<br/><code style="color:#c9d1d9">DeepseekV3ForCausalLM</code> in both config.json files.</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- DELTAS (center) -->
+          <g transform="translate(614,60)">
+            <rect width="120" height="250" rx="10" fill="#0a0e14" stroke="#ffb020" stroke-opacity=".4"/>
+            <text x="60" y="24" text-anchor="middle" fill="#ffb020" font-size="11" font-weight="700" font-family="'JetBrains Mono',monospace">DELTAS</text>
+            <foreignObject x="10" y="40" width="100" height="200">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.9;color:#ffd9a8;text-align:center">
+                <div>=</div>
+                <div>&minus;50% heads</div>
+                <div>+50% experts</div>
+                <div>dense 3&rarr;1</div>
+                <div>rope &times;5</div>
+                <div>Muon+clip</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- K2 column -->
+          <g transform="translate(754,60)">
+            <rect width="462" height="250" rx="10" fill="url(#G-pink)" stroke="#ff3fa4" stroke-opacity=".55"/>
+            <text x="20" y="24" fill="#ff3fa4" font-size="11" font-weight="700" font-family="'JetBrains Mono',monospace" letter-spacing=".14em">KIMI K2 (the shipped delta)</text>
+            <foreignObject x="20" y="40" width="422" height="200">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;color:#ffd3e6">
+                <div><span style="color:#ff3fa4">params:</span> 1.04T total / <strong style="color:#fff">32B active</strong> (&minus;13% vs V3)</div>
+                <div><span style="color:#ff3fa4">layers:</span> 61 &nbsp; <span style="color:#ff3fa4">dense prefix:</span> <strong style="color:#fff">1</strong></div>
+                <div><span style="color:#ff3fa4">attention:</span> MLA, <strong style="color:#fff">64 heads</strong> (halved)</div>
+                <div><span style="color:#ff3fa4">MoE:</span> <strong style="color:#fff">384 routed + 1 shared, top-8</strong></div>
+                <div><span style="color:#ff3fa4">sparsity:</span> 48 (of 384 chosen)</div>
+                <div><span style="color:#ff3fa4">rope_theta:</span> <strong style="color:#fff">50,000</strong> (5x, for agentic long-ctx)</div>
+                <div><span style="color:#ff3fa4">optimizer:</span> <strong style="color:#fff">Muon + qk-clip</strong></div>
+                <div style="margin-top:8px;color:#ffb3d4;font-size:11px">the bet: <strong style="color:#ff3fa4">move compute from attention to MoE</strong>.<br/>§2.3 shows doubling heads buys &lt; 1.2% loss for +83% FLOPs at 128k; K2 spends the saved budget on more experts.</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- arrows between columns -->
+          <g fill="none" stroke-width="2">
+            <path d="M 594 185 L 614 185" stroke="#ffb020" marker-end="url(#A-orange)"/>
+            <path d="M 734 185 L 754 185" stroke="#ff3fa4" marker-end="url(#A-mag)"/>
+          </g>
+        </svg>
+      </div>
+      <p class="cap">Notice the five DELTAS down the center — attention halved, experts +50%, dense prefix from 3 to 1, rope_theta up 5x, optimizer swapped to Muon. Every one of those changes is a one-line config edit on top of DeepSeek-V3's skeleton; K2's contribution is not the skeleton, it's picking <em>which</em> knobs to move.</p>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">paper vs HF drift</span>
+        <p>
+          <span class="paper-val">Paper §2.3 lists "Activated Parameters = 32.6B"; the abstract and HF card both round to "32B"; paper §4.2 Table 4 totals 1043B.</span>
+          <span class="code-val">Counting HF safetensors yields <code>1026470731056 ≈ 1026.5B</code> total — about <b>1.6%</b> shy of the paper number (a 16.5B-parameter gap).</span>
+          <span class="resolution">My guess: the paper counts theoretical non-quantized parameters, HF counts what actually fits on disk after fp8 packing. For this article I'll use the paper's "1.04T / 32B active"; don't be surprised if the card says 32B or community repos count 1026.5B.</span>
+        </p>
+      </div>
+
+      <h3 class="sub">
+      3. The pre-training numbers worth remembering
+      </h3>
+            <p>Paper §2.5 is specific about the schedule — <b>WSD (Warmup–Stable–Decay)</b>: 500-step warmup, then 10T tokens at a flat <b>2e-4</b>, then 5.5T with cosine decay to 2e-5; batch size held at 67M tokens throughout, weight decay 0.1. An annealing phase continues, lr 2e-5 → 7e-6, over 400B tokens @ 4k followed by 60B tokens @ 32k; YaRN then extends context to 128k.</p>
+
+            <p>The one hardware number worth keeping: <b>H800 clusters, 16-way PP + 16-way EP + ZeRO-1 DP, ~30 GB per GPU for params/grads/optimizer and the rest for activations; MoE up-proj and SwiGLU inputs are stored in FP8 but never computed in FP8</b>. The "FP8 storage, not FP8 compute" split strikes me as a pragmatic call — it saves memory without trading off model quality.</p>
+    </div>
+  </section>
+
+  <!-- =========================== MUONCLIP / PRE-TRAINING =========================== -->
+  <section id="pretrain">
+  <!-- principle: Muon optimizer needs MuonClip on attention logits -->
+    <div class="wrap">
+      <h2 class="sec">muonclip <span class="desc-inline">// keeping Muon stable at 1T</span></h2>
+
+            <p>Moonshot's 2024 Moonlight work already showed Muon outperforms AdamW on token efficiency. But pushing Muon to 1T scale hit a wall: <b>attention logits blow up past 1000</b>. The paper's phrasing is unusually honest: "an issue that occurs more frequently with Muon but less with AdamW". That sentence landed hard, because it means anyone who wants to use Muon at scale has to solve this first.</p>
+
+            <p>Existing fixes are inadequate: <b>logit soft-capping</b> (the Gemma approach) only clips pre-softmax — the q·k product itself can overflow before capping; <b>QK-Norm</b> is the natural idea, but <b>MLA</b> never materializes a full K matrix — the KV is compressed at inference, so there's nowhere to plug in a per-key norm. You have to attack the weights themselves.</p>
+
+      <h3 class="sub">
+      qk-clip, in one line
+      </h3>
+            <p>The idea fits in one line: monitor the max logit per batch; if it exceeds threshold τ, rescale <code>W_q</code> and <code>W_k</code> proportionally. Crucially, this is <b>post-hoc weight rescaling</b> — it does not alter the current step's forward/backward, it's purely a cleanup action.</p>
+
+            <p>The per-head version (what Algorithm 1 actually runs):</p>
+
+      <div class="formula">
+        $$ S_{\max}^{h} = \frac{1}{\sqrt{d}} \max_{\mathbf{X}\in B}\ \max_{i,j}\ \mathbf{Q}_i^h {\mathbf{K}_j^h}^\top,\qquad \gamma_h = \min\!\left(1,\ \frac{\tau}{S_{\max}^{h}}\right) $$
+      </div>
+
+            <p>Then for MLA specifically, <b>only the head-specific parts get rescaled; the shared rotary key is left alone</b>:</p>
+
+      <div class="formula">
+        $$ \mathbf{W}_{qc}^{h} \leftarrow \sqrt{\gamma_h}\,\mathbf{W}_{qc}^{h},\quad \mathbf{W}_{kc}^{h} \leftarrow \sqrt{\gamma_h}\,\mathbf{W}_{kc}^{h},\quad \mathbf{W}_{qr}^{h} \leftarrow \gamma_h\,\mathbf{W}_{qr}^{h},\quad \mathbf{W}_{kr}\ \text{unchanged} $$
+      </div>
+
+            <p>Why <b>γ_h on q_r, √γ_h split between q_c and k_c</b>? Because k_r is shared across heads — touching it would cause cross-head interference. Since the key-side rotary is off-limits, the query side has to absorb the full γ on its own; you can no longer split equally with the key. This is an MLA-specific subtlety; missing it would make reproducing qk-clip very confusing.</p>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">a paper-vs-blog discrepancy</span>
+          <p>
+            <span class="paper-val">Both the blog and paper lead with an <em>α-version</em>: <span class="hi">$q_i = \eta^\alpha W_q x_i,\ k_i = \eta^{1-\alpha} W_k x_i$</span>, noting α is "typically set to 0.5".</span>
+            <span class="code-val">But Algorithm 1 directly uses per-head γ_h and √γ — q_c / k_c get √γ (equivalent to α = 0.5), while q_r gets the full γ (equivalent to α = 1).</span>
+            <span class="resolution">In other words, <b>the "balancing α" is not a single global hyperparameter in the actual implementation; it's MLA's sub-components being treated differently</b>. I spent a good twenty minutes reconciling the formulas with the pseudocode — flagging.</span>
+          </p>
+      </div>
+
+            <p>The final MuonClip step just adds a post-update loop on top of Muon:</p>
+
+      <pre><code class="language-python"># Algorithm 1, paper-level pseudocode. Not from a released repo.
+for step in range(num_steps):
+    # -- 1. Muon update (unchanged from Moonlight) --
+    for W in trainable_weights:  # W in R^{n x m}
+        M = mu * M + grad(W)                                  # momentum
+        O = newton_schulz(M) * sqrt(max(n, m)) * 0.2          # match Adam RMS
+        W -= lr * (O + wd * W)                                # decoupled wd
+
+    # -- 2. QK-Clip (new) --
+    for layer in model.layers:
+        for h in layer.attn.heads:
+            S_max_h = layer.attn.max_logit[h]                 # captured during fwd
+            if S_max_h &gt; tau:                                  # tau = 100 for K2
+                gamma = tau / S_max_h
+                W_qc[h] *= sqrt(gamma)   # head-specific query compressed
+                W_kc[h] *= sqrt(gamma)   # head-specific key  compressed
+                W_qr[h] *= gamma         # head-specific query rotary (full γ)
+                # W_kr is SHARED across heads — do NOT touch</code></pre>
+
+      <h3 class="sub">
+      MuonClip as a post-update scaffold
+      </h3>
+
+      <div class="svg-wrap">
+        <svg viewBox="0 0 1240 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MuonClip mechanism: a standard Muon update is followed by a post-update loop that inspects the per-head max logit from the forward pass, computes a per-head gamma clip factor if the logit exceeded tau=100, and rescales W_qc, W_kc (square-root gamma) and W_qr (full gamma) — never W_kr, which is shared across heads">
+          <rect x="0" y="0" width="1240" height="360" fill="url(#G-slate)"/>
+          <rect x="0" y="0" width="1240" height="360" fill="url(#P-grid)"/>
+
+          <g>
+            <rect x="16" y="10" width="1208" height="22" rx="3" fill="#0a0e14" stroke="rgba(57,255,136,.22)"/>
+            <text x="28" y="25" fill="#39ff88" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" letter-spacing=".14em">&#9678; MUONCLIP &middot; POST-UPDATE QK RESCALE &middot; tau = 100</text>
+            <text x="1222" y="25" fill="#8b949e" font-family="'JetBrains Mono',monospace" font-size="10" text-anchor="end" letter-spacing=".06em">fig: muonclip/mechanism</text>
+          </g>
+
+          <!-- Stage 1: Muon update -->
+          <g transform="translate(24,60)">
+            <rect width="220" height="250" rx="9" fill="url(#G-blue)" stroke="#7c9cff" stroke-opacity=".55"/>
+            <foreignObject x="10" y="8" width="200" height="234">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;color:#cfd4ec">
+                <div style="font-weight:700;color:#fff">1. Muon step</div>
+                <div>M &lArr; mu * M + grad(W)</div>
+                <div>O &lArr; NewtonSchulz(M)</div>
+                <div>&nbsp;&nbsp;&middot; sqrt(max(n,m)) * 0.2</div>
+                <div>W &lArr; W - lr * (O + wd * W)</div>
+                <div style="margin-top:8px;color:#8fb3ff">(standard Moonlight-style)</div>
+                <div style="margin-top:8px;color:#ffb020;font-weight:700">problem:</div>
+                <div style="color:#ffd9a8">NewtonSchulz normalizes the</div>
+                <div style="color:#ffd9a8">joint singular spectrum over</div>
+                <div style="color:#ffd9a8">all 64 heads of W_q / W_k;</div>
+                <div style="color:#ffd9a8">some heads grow to compensate</div>
+                <div style="color:#ffd9a8">and logits blow past 1000.</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Stage 2: forward collect S_max -->
+          <g transform="translate(272,60)">
+            <rect width="240" height="250" rx="9" fill="url(#G-orange)" stroke="#ffb020" stroke-opacity=".55"/>
+            <foreignObject x="10" y="8" width="220" height="234">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;color:#ffd9a8">
+                <div style="font-weight:700;color:#fff">2. forward monitor</div>
+                <div>during the fwd pass, track</div>
+                <div>the per-head max logit:</div>
+                <div style="color:#ffb020;font-weight:700;margin-top:4px">S_max^h = max_{i,j,X in B}</div>
+                <div style="color:#ffb020;font-weight:700">&nbsp;&nbsp;Q_i^h &middot; (K_j^h)^T / sqrt(d)</div>
+                <div style="margin-top:6px;color:#ffd166">one scalar per (layer, head)</div>
+                <div style="color:#ffd166">captured by hook, no added</div>
+                <div style="color:#ffd166">compute beyond one reduce.</div>
+                <div style="margin-top:8px;color:#ffb020;font-weight:700">pain point this solves:</div>
+                <div style="color:#ffd9a8">QK-Norm doesn't apply - MLA</div>
+                <div style="color:#ffd9a8">never materializes full K;</div>
+                <div style="color:#ffd9a8">logit softcap clips too late.</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Stage 3: compute gamma -->
+          <g transform="translate(540,60)">
+            <rect width="220" height="250" rx="9" fill="url(#G-violet)" stroke="#9d7bff" stroke-opacity=".55"/>
+            <foreignObject x="10" y="8" width="200" height="234">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;color:#d6ccff">
+                <div style="font-weight:700;color:#fff">3. per-head clip</div>
+                <div>for each head h:</div>
+                <div style="color:#9d7bff;font-weight:700;margin-top:4px">gamma_h = min(1, tau / S_max^h)</div>
+                <div style="color:#b2a5ff">gamma_h in (0, 1]</div>
+                <div style="margin-top:6px;color:#d6ccff">gamma_h = 1 &rArr; no-op</div>
+                <div style="color:#d6ccff">gamma_h &lt; 1 &rArr; rescale</div>
+                <div style="margin-top:8px;color:#ffb020;font-weight:700">why min(1, ...):</div>
+                <div style="color:#ffd9a8">never grows the logit;</div>
+                <div style="color:#ffd9a8">this is a cleanup action,</div>
+                <div style="color:#ffd9a8">not a learning signal.</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Stage 4: rescale -->
+          <g transform="translate(788,60)">
+            <rect width="300" height="250" rx="9" fill="url(#G-pink)" stroke="#ff3fa4" stroke-opacity=".65"/>
+            <foreignObject x="10" y="8" width="280" height="234">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;color:#ffd3e6">
+                <div style="font-weight:700;color:#fff">4. rescale per head</div>
+                <div>if gamma_h &lt; 1:</div>
+                <div style="color:#ff3fa4;font-weight:700;margin-top:4px">&nbsp;&nbsp;W_qc^h *= sqrt(gamma_h)</div>
+                <div style="color:#ff3fa4;font-weight:700">&nbsp;&nbsp;W_kc^h *= sqrt(gamma_h)</div>
+                <div style="color:#ff3fa4;font-weight:700">&nbsp;&nbsp;W_qr^h *= gamma_h</div>
+                <div style="color:#ffb3d4">&nbsp;&nbsp;W_kr &mdash; unchanged</div>
+                <div style="margin-top:8px;color:#ffb3d4">why sqrt on q_c / k_c, full gamma on q_r:</div>
+                <div style="color:#ffd3e6">q_c and k_c both multiply into the</div>
+                <div style="color:#ffd3e6">pre-softmax logit, so each takes</div>
+                <div style="color:#ffd3e6">half the rescale (sqrt). But k_r is</div>
+                <div style="color:#ffd3e6">shared across heads - touching it</div>
+                <div style="color:#ffd3e6">would cross-contaminate - so q_r</div>
+                <div style="color:#ffd3e6">has to absorb the full gamma alone.</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Stage 5: resume -->
+          <g transform="translate(1116,60)">
+            <rect width="104" height="250" rx="9" fill="url(#G-green)" stroke="#39ff88" stroke-opacity=".55"/>
+            <foreignObject x="10" y="8" width="84" height="234">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.45;color:#b8f0d9">
+                <div style="font-weight:700;color:#fff">5. next step</div>
+                <div>current fwd /</div>
+                <div>bwd of this</div>
+                <div>step is NOT</div>
+                <div>re-run</div>
+                <div style="margin-top:6px;color:#39ff88;font-weight:700">O(per-head)</div>
+                <div style="color:#39ff88;font-weight:700">overhead</div>
+                <div>only</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- arrows -->
+          <g fill="none" stroke-width="2">
+            <path d="M 244 185 L 272 185" stroke="#7c9cff" marker-end="url(#A-accent)"/>
+            <path d="M 512 185 L 540 185" stroke="#ffb020" marker-end="url(#A-orange)"/>
+            <path d="M 760 185 L 788 185" stroke="#9d7bff" marker-end="url(#A-violet)"/>
+            <path d="M 1088 185 L 1116 185" stroke="#ff3fa4" marker-end="url(#A-mag)"/>
+          </g>
+        </svg>
+      </div>
+      <p class="cap">Notice stage 2 is a forward-pass <em>observation</em>, not a reforward — the max logit is captured during the same forward that computed the gradient. Stage 4 rescales weights in-place after Muon has already stepped them; it doesn't undo the step, only the pathological growth direction. That's why MuonClip is a scaffold (stage 4 becomes a no-op once the model is stable) rather than a permanent regularizer.</p>
+
+      <h3 class="sub">
+      What it looks like in practice
+      </h3>
+            <p>Paper Figure 2 (right) is worth looking up — <b>at the start, the max logit pins to τ = 100 and tracks the ceiling exactly</b>, then after ~30% of training steps it voluntarily drops to a lower stable range, as if the model itself learns not to explode. This means qk-clip is a tight constraint early on and effectively dormant later — <b>it's scaffolding, not a permanent regularizer</b>. The paper is very understated about this, but it's the most interesting sentence in §2.1 to me.</p>
+
+      <div class="svg-wrap">
+        <svg viewBox="0 0 1240 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Max attention logit across training steps: without MuonClip the curve rises unbounded past 1000 and triggers NaN-divergence; with MuonClip the curve is pinned to tau=100 during the early phase, then voluntarily drops to a lower stable range around step 30 percent of training, showing the clip has become dormant">
+          <rect x="0" y="0" width="1240" height="360" fill="url(#G-slate)"/>
+          <rect x="0" y="0" width="1240" height="360" fill="url(#P-grid)"/>
+
+          <g>
+            <rect x="16" y="10" width="1208" height="22" rx="3" fill="#0a0e14" stroke="rgba(0,229,255,.22)"/>
+            <text x="28" y="25" fill="#00e5ff" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" letter-spacing=".14em">&#9678; MAX ATTENTION LOGIT &middot; WITHOUT vs WITH MuonClip &middot; tau = 100</text>
+            <text x="1222" y="25" fill="#8b949e" font-family="'JetBrains Mono',monospace" font-size="10" text-anchor="end" letter-spacing=".06em">fig: muonclip/curve</text>
+          </g>
+
+          <!-- plot area -->
+          <g transform="translate(80,60)">
+            <!-- axes -->
+            <line x1="0" y1="0" x2="0" y2="240" stroke="#1e3a52"/>
+            <line x1="0" y1="240" x2="1100" y2="240" stroke="#1e3a52"/>
+
+            <!-- y ticks -->
+            <g font-family="'JetBrains Mono',monospace" font-size="10" fill="#8b949e">
+              <text x="-8" y="4" text-anchor="end">1200</text>
+              <text x="-8" y="44" text-anchor="end">1000</text>
+              <text x="-8" y="84" text-anchor="end">800</text>
+              <text x="-8" y="124" text-anchor="end">400</text>
+              <text x="-8" y="164" text-anchor="end">100</text>
+              <text x="-8" y="204" text-anchor="end">50</text>
+              <text x="-8" y="244" text-anchor="end">0</text>
+              <text x="-48" y="-8" fill="#c9d1d9">max logit</text>
+            </g>
+
+            <!-- x ticks (training progress) -->
+            <g font-family="'JetBrains Mono',monospace" font-size="10" fill="#8b949e">
+              <text x="0" y="256" text-anchor="middle">0</text>
+              <text x="220" y="256" text-anchor="middle">3T</text>
+              <text x="440" y="256" text-anchor="middle">6T</text>
+              <text x="660" y="256" text-anchor="middle">9T</text>
+              <text x="880" y="256" text-anchor="middle">12T</text>
+              <text x="1100" y="256" text-anchor="middle">15.5T</text>
+              <text x="1050" y="274" fill="#c9d1d9">tokens</text>
+            </g>
+
+            <!-- tau=100 line -->
+            <line x1="0" y1="164" x2="1100" y2="164" stroke="#ffb020" stroke-dasharray="4 3" stroke-width="1.5"/>
+            <text x="1106" y="168" fill="#ffb020" font-family="'JetBrains Mono',monospace" font-size="10">tau = 100</text>
+
+            <!-- Without MuonClip: exploding curve (dashed red) -->
+            <path d="M 0 230 C 100 220 140 200 180 170 C 220 130 260 90 300 60 C 340 30 380 10 420 0" stroke="#ff3fa4" stroke-width="2" fill="none" stroke-dasharray="6 4"/>
+            <text x="430" y="6" fill="#ff3fa4" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700">NaN &rarr; diverge</text>
+            <text x="170" y="112" fill="#ff3fa4" font-family="'JetBrains Mono',monospace" font-size="10">without clip</text>
+
+            <!-- With MuonClip: rises to tau, tracks, then drops -->
+            <path d="M 0 230 C 60 205 100 185 140 172 C 180 166 220 164 260 164 C 320 164 380 164 440 164" stroke="#39ff88" stroke-width="2.5" fill="none"/>
+            <!-- Phase A: pinned at tau -->
+            <!-- transition around 30% -->
+            <path d="M 440 164 C 480 168 520 175 560 184 C 600 194 680 200 780 204 C 880 206 1000 208 1100 208" stroke="#39ff88" stroke-width="2.5" fill="none"/>
+            <text x="260" y="158" fill="#39ff88" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700">pinned to tau (scaffold active)</text>
+            <text x="720" y="195" fill="#39ff88" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700">drops below tau (scaffold dormant)</text>
+
+            <!-- Marker: ~30% of training, where the curve detaches from tau -->
+            <line x1="440" y1="0" x2="440" y2="240" stroke="#1e3a52" stroke-dasharray="2 3"/>
+            <text x="442" y="14" fill="#8b949e" font-family="'JetBrains Mono',monospace" font-size="9.5">~30% of run</text>
+          </g>
+
+          <!-- legend -->
+          <g transform="translate(80,320)">
+            <path d="M 0 0 L 40 0" stroke="#ff3fa4" stroke-width="2" stroke-dasharray="6 4" fill="none"/>
+            <text x="48" y="4" font-family="'JetBrains Mono',monospace" font-size="10.5" fill="#c9d1d9">Muon without clip - logits blow past 1000, training NaNs</text>
+
+            <path d="M 560 0 L 600 0" stroke="#39ff88" stroke-width="2.5" fill="none"/>
+            <text x="608" y="4" font-family="'JetBrains Mono',monospace" font-size="10.5" fill="#c9d1d9">Muon + qk-clip - 15.5T tokens, zero loss spikes</text>
+          </g>
+        </svg>
+      </div>
+      <p class="cap">Notice where the green curve detaches from the tau=100 line — roughly 30% into the run, the model has learned a weight configuration where the rescale is no longer needed and the per-head gamma drops below 1 spontaneously. The scaffold goes dormant; the training continues on Muon proper. Contrast the dashed red, where the unclipped logit marches past 1000 and training NaNs shortly after.</p>
+
+            <p>Together with this, K2's loss curve (paper Figure 3) has <b>zero spikes across the entire 15.5T-token run</b> — the paper explicitly labels it "per-step, without smoothing or sub-sampling". Not strictly monotonic (normal stochastic noise is still there), but the kind of unpredictable divergence that haunts industrial-scale training has been suppressed by a single mechanism. This is what stuck with me after §2.1: <b>a paper-worthy contribution can be as small as "one post-update loop"</b>.</p>
+
+      <div class="callout" data-variant="k">
+        <span class="t">the napkin takeaway</span>
+        <p>MuonClip is the moonshot.ai-era fix for a specific pain point: Muon's joint-spectrum orthogonalization pushes individual heads to grow weights when they want sharper attention, and at 1T scale this overshoots. The follow-up fix in <a href="../glm-5/#mla-muon" rel="noopener">GLM-5</a> — <strong>Muon Split</strong> — attacks the same root cause structurally by orthogonalizing each per-head sub-block independently, so the blow-up never happens in the first place. Read the two together: K2 treated the symptom, GLM-5 treated the cause. That's how this kind of research moves.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== AGENTIC DATA FACTORY =========================== -->
+  <section id="data">
+  <!-- principle: 23k synthetic tools is a data-factory, not a list -->
+    <div class="wrap">
+      <h2 class="sec">agentic data factory <span class="desc-inline">// where post-training starts</span></h2>
+
+            <p>Ordinary instruction data is ordinary — K2 uses K1.5 plus in-house expert models plus LLM judging, same as anyone else. What's actually worth dissecting is <b>§3.1.1 agentic data synthesis</b>. That's the section where Moonshot spends real budget on the phrase "agentic intelligence".</p>
+
+      <h3 class="sub">
+      One pipeline, three stages
+      </h3>
+
+      <div class="mermaid">
+flowchart LR
+  A[Tool Spec Repo<br/>3k real MCP + 20k synth] --> B[Agent + Task Gen<br/>thousands of agents · rubric tasks]
+  B --> C[Trajectory Gen<br/>User sim + Tool sim + Agent]
+  C --> D[LLM Judge<br/>filter against rubric]
+  D --> E[SFT / Rejection Sample]
+  F[Real Sandbox<br/>k8s · 10k concurrent] --> E
+      </div>
+      <p class="cap">Notice the Real Sandbox arrow lands at SFT, not at the Judge — for code / SWE tasks the k8s unit-test execution is a second, harder filter after LLM-judge rubric passes. The simulator produces look-plausible trajectories; the sandbox catches look-plausible-but-wrong code. Two filters in series, different axes.</p>
+
+      <div class="pipe">
+        <div class="step">
+          <div class="n">01</div>
+          <h5>Tool Spec Generation</h5>
+            <p>Crawl 3000+ real MCP tools from GitHub (specs included), then evolve 20000+ synthetic ones via hierarchical domain generation — pick a category (financial trading, software apps, robot control…), evolve sub-domains, synthesize tool specs per sub-domain. The t-SNE viz shows the two tool populations covering complementary regions with almost no overlap.</p>
+        </div>
+        <div class="step">
+          <div class="n">02</div>
+          <h5>Agent + Rubric Task</h5>
+            <p>Sample toolsets ("you are an agent with X, Y, Z"), synthesize thousands of agents with different system prompts. Each agent gets multiple tasks, each task paired with a <b>rubric</b> — success criteria, expected tool-use pattern, evaluation checkpoints. Everything flows through rubrics; no free-text judging.</p>
+        </div>
+        <div class="step">
+          <div class="n">03</div>
+          <h5>Trajectory Sim</h5>
+            <p>LLMs play personas (distinct communication styles and preferences), LLMs play the tool environment ("functionally equivalent to a world model" — stateful, with controlled stochasticity for partial failures and edge cases), and the agent runs multi-turn dialogue. Massive trajectory generation.</p>
+        </div>
+        <div class="step">
+          <div class="n">04</div>
+          <h5>LLM-Judge Filter</h5>
+            <p>A separate LLM judge scores every trajectory against the rubric, retaining only successes. This is large-scale rejection sampling in a fancy coat. <b>For coding / SWE tasks, paper §3.1.1 adds real execution sandboxes on top</b> (the scale number lives in §3.2.1: 10000+ concurrent Kubernetes instances, the same infra that also serves RL unit tests) — the simulator's fidelity isn't enough for code.</p>
+        </div>
+      </div>
+
+      <div class="grid c2" style="margin-top:20px">
+        <div class="card">
+          <h4>Why this pipeline scales</h4>
+          <p>Because <b>every stage is driven by an LLM</b> — tool specs written by LLMs, agent prompts sampled by LLMs, users simulated by LLMs, tool environments simulated by LLMs, judging done by LLMs. With compute, throughput is bounded only by inference speed — unlike early RLHF, which bottlenecked on human annotators.</p>
+        </div>
+        <div class="card">
+          <h4>Cost: simulation fidelity</h4>
+          <p>The paper admits this: "inherent limitation of simulation fidelity". Pure simulation teaches "looks like tool-use" patterns rather than actual problem-solving. That's why they absolutely need the k8s sandbox for real code — <b>coding is the agentic task that exposes fake reasoning most quickly; real-execution feedback is irreplaceable</b>.</p>
+        </div>
+      </div>
+
+      <h3 class="sub">
+      One observation I can't shake
+      </h3>
+            <p>Rubrics thread through all of K2 post-training — agentic data is rubric-scored, RL self-critique is rubric-scored. My read: <b>the rubric is Moonshot's answer to "scalable preference labels"</b>. RLHF ran out of human labels; Constitutional AI replaced them with principles; K2 replaces them with rubrics. The common move is reducing "what's a good answer" to an enumerable, checkable list. The difference: rubrics are more task-specific than principles — one rubric per task is easier to maintain than one big constitution. I think this pattern generalizes.</p>
+    </div>
+  </section>
+
+  <!-- =========================== RL LOOP =========================== -->
+  <section id="rl">
+  <!-- principle: self-critique rubric reward closes the verifier gap -->
+    <div class="wrap">
+      <h2 class="sec">closed-loop rl <span class="desc-inline">// verifiable reward ↔ self-critique rubric</span></h2>
+
+            <p>This is the section I marked up most. K2's RL system unifies verifiable and subjective tasks in a single gym, held together by a <b>closed-loop critic</b>: verifiable rewards continuously recalibrate a critic model, which in turn judges creative writing, open-ended QA, and everything else that resists rule-verification.</p>
+
+      <h3 class="sub">
+      1. Verifiable Rewards Gym
+      </h3>
+            <p>§3.2.1 lists a wide verifiable-task inventory — <b>math / STEM / logic</b> (structured-data reasoning, 24-game, Sudoku, Morse decoding and friends); <b>complex instruction following</b> (code-interpreter checks + LLM-as-judge + an anti-hack layer); <b>faithfulness</b> (a sentence-level judge model); <b>competitive coding + software engineering</b> (k8s running unit tests); <b>safety</b> (attack model vs. target vs. judge, binary pass/fail).</p>
+
+      <div class="callout" data-variant="ok">
+        <span class="t">a small design note</span>
+        Math / STEM prompts are filtered to <b>moderate difficulty</b>, using the SFT model's pass@k to estimate. Too easy → no signal; too hard → never positive reward. Every frontier lab is doing this quietly; few papers state it so plainly.
+      </div>
+
+      <h3 class="sub">
+      2. Self-Critique Rubric Reward
+      </h3>
+            <p>The subjective-task path (§3.2.2) goes like this: <b>the same K2</b> — not a separate critic model, but a judge <em>capability</em> bootstrapped during SFT by mixing in preference datasets — switches into judge mode to score actor outputs pairwise. The rubric stack has three layers —</p>
+
+      <div class="grid c3">
+        <div class="card">
+          <h4>[F.1] Core Rubrics</h4>
+            <p>Three "Kimi values": <b>Clarity &amp; Relevance</b> (concise, on-topic), <b>Conversational Fluency</b> (natural turn-taking), <b>Objective &amp; Grounded</b> (no meta-commentary, no flattery). These are negotiable against the model's own priors.</p>
+        </div>
+        <div class="card">
+          <h4>[F.2] Prescriptive (anti-hack)</h4>
+            <p>Hard bans on common reward-hacking shortcuts: <b>no opening flattery ("Good question!")</b>, <b>no explicit self-justification</b> about why the answer is good. Looks minor, but these are the exact shortcuts RL would otherwise exploit.</p>
+        </div>
+        <div class="card">
+          <h4>[custom] Task rubrics</h4>
+            <p>Hand-crafted <b>task-specific rubrics</b> from the data team. For creative writing, a rubric might forbid cliché openings; for a tool-calling task, it might require argument names to match a schema exactly.</p>
+        </div>
+      </div>
+
+      <h3 class="sub">
+      3. Closed loop — the critic learns alongside the policy
+      </h3>
+            <p>This is K2's genuine contribution. A pure rubric-only RL run faces a drift problem — after a few policy updates, the policy's output distribution has shifted but the critic is still grading against the old style. Moonshot's fix is to use on-policy rollouts from verifiable tasks to <b>update the critic as well</b>: the critic must stay accurate on tasks that have ground truth, which amounts to giving it a "grounding anchor".</p>
+
+      <!-- Closed-loop diagram -->
+      <div class="svg-wrap">
+        <svg viewBox="0 0 1000 460" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Closed-loop critic refinement in K2 RL">
+          <rect x="0" y="0" width="1000" height="460" fill="url(#P-grid)" opacity=".45"/>
+          <g>
+            <rect x="20" y="8" width="960" height="22" rx="3" fill="#0a0e14" stroke="rgba(255,63,164,.22)"/>
+            <text x="36" y="23" fill="#ff3fa4" font-size="10" font-weight="700" letter-spacing=".14em">◆ CLOSED-LOOP CRITIC · K2 RL</text>
+            <text x="500" y="23" fill="#a9afc3" font-size="10" text-anchor="middle" letter-spacing=".08em">verifiable task signal anchors the critic on-policy</text>
+            <text x="964" y="23" fill="#8b949e" font-size="10" text-anchor="end" letter-spacing=".06em">fig: rl/loop</text>
+          </g>
+
+          <!-- Actor -->
+          <g transform="translate(60,80)">
+            <rect x="0" y="0" width="220" height="120" rx="10" fill="url(#G-teal)" stroke="#39ff88" stroke-opacity=".6"/>
+            <text x="110" y="30" text-anchor="middle" fill="#39ff88" font-size="11" font-weight="700" letter-spacing=".12em">K2 ACTOR</text>
+            <text x="110" y="58" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">policy π_θ</text>
+            <text x="110" y="80" text-anchor="middle" fill="#b8f0d9" font-size="11">sample K responses</text>
+            <text x="110" y="98" text-anchor="middle" fill="#b8f0d9" font-size="11">per prompt x</text>
+          </g>
+
+          <!-- Verifiable tasks -->
+          <g transform="translate(360,40)">
+            <rect x="0" y="0" width="260" height="90" rx="10" fill="url(#G-blue)" stroke="#7c9cff" stroke-opacity=".6"/>
+            <text x="130" y="22" text-anchor="middle" fill="#7c9cff" font-size="10.5" font-weight="700" letter-spacing=".12em">[A] VERIFIABLE TASKS</text>
+            <text x="130" y="46" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">rule-based reward r(x, y)</text>
+            <text x="130" y="64" text-anchor="middle" fill="#cfd4ec" font-size="10.5">math · SWE · logic · faith · safety</text>
+            <text x="130" y="80" text-anchor="middle" fill="#8fb3ff" font-size="10">objective, deterministic</text>
+          </g>
+
+          <!-- Subjective tasks -->
+          <g transform="translate(360,160)">
+            <rect x="0" y="0" width="260" height="90" rx="10" fill="url(#G-pink)" stroke="#ff3fa4" stroke-opacity=".6"/>
+            <text x="130" y="22" text-anchor="middle" fill="#ff3fa4" font-size="10.5" font-weight="700" letter-spacing=".12em">[B] SUBJECTIVE TASKS</text>
+            <text x="130" y="46" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">critic-based reward r̂(x, y)</text>
+            <text x="130" y="64" text-anchor="middle" fill="#ffd3e6" font-size="10.5">creative · open-ended · persona</text>
+            <text x="130" y="80" text-anchor="middle" fill="#ffb3d4" font-size="10">rubric-driven, pairwise</text>
+          </g>
+
+          <!-- Critic -->
+          <g transform="translate(720,110)">
+            <rect x="0" y="0" width="220" height="120" rx="10" fill="url(#G-violet)" stroke="#9d7bff" stroke-opacity=".6"/>
+            <text x="110" y="28" text-anchor="middle" fill="#b099ff" font-size="11" font-weight="700" letter-spacing=".12em">K2 CRITIC</text>
+            <text x="110" y="56" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">same K2,</text>
+            <text x="110" y="72" text-anchor="middle" fill="#fff" font-size="13" font-weight="700">judge mode</text>
+            <text x="110" y="96" text-anchor="middle" fill="#d3c7ff" font-size="11">rubric-judge for [B]</text>
+          </g>
+
+          <!-- Arrow Actor -> tasks -->
+          <path d="M 280 120 L 356 80" fill="none" stroke="#39ff88" stroke-width="2" marker-end="url(#A-green)"/>
+          <path d="M 280 160 L 356 200" fill="none" stroke="#39ff88" stroke-width="2" marker-end="url(#A-green)"/>
+
+          <!-- Arrow A -> Critic (refine) -->
+          <path d="M 620 80 Q 700 80 720 140" fill="none" stroke="#7c9cff" stroke-width="2.5" marker-end="url(#A-accent)"/>
+          <text x="680" y="72" fill="#7c9cff" font-size="11" font-weight="700">refine critic</text>
+          <text x="680" y="88" fill="#8fb3ff" font-size="10">on-policy RLVR data</text>
+
+          <!-- Arrow B -> Critic (query) -->
+          <path d="M 620 200 Q 700 200 720 180" fill="none" stroke="#ff3fa4" stroke-width="2.5" marker-end="url(#A-mag)"/>
+          <text x="680" y="216" fill="#ff3fa4" font-size="11" font-weight="700">score subjective</text>
+          <text x="680" y="232" fill="#ffb3d4" font-size="10">pairwise vs rubric</text>
+
+          <!-- Arrow: rewards back to Actor -->
+          <g transform="translate(60,280)">
+            <rect x="0" y="0" width="880" height="90" rx="10" fill="url(#G-slate)" stroke="#39ff88" stroke-opacity=".3"/>
+            <text x="30" y="22" fill="#39ff88" font-size="10" font-weight="700" letter-spacing=".12em">POLICY UPDATE — K1.5-style objective</text>
+            <text x="30" y="48" fill="#fff" font-size="12.5" font-family="'JetBrains Mono',monospace">L_RL(θ) = E_x [ (1/K) Σ ( r(x, y_i) − r̄(x) − τ · log π_θ(y_i|x) / π_old(y_i|x) )² ]</text>
+            <text x="30" y="70" fill="#a9afc3" font-size="11">r = r(x,y) from [A] for verifiable prompts;  r̂(x,y) from critic for subjective prompts.  Same optimizer (Muon).</text>
+          </g>
+
+          <!-- Arrow from policy update to actor -->
+          <path d="M 280 280 Q 220 250 220 210" fill="none" stroke="#39ff88" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#A-green)"/>
+          <text x="200" y="250" fill="#7cd8a8" font-size="10" text-anchor="end">update θ</text>
+
+          <!-- Annotations -->
+          <g transform="translate(60,400)" font-size="11" fill="#a9afc3">
+            <text y="0">① Actor samples K rollouts on every prompt x.</text>
+            <text y="16">② Verifiable prompts produce ground-truth rewards; subjective prompts produce critic-scored rewards.</text>
+            <text y="32">③ Verifiable rollouts also re-train the critic, distilling "objective taste" into rubric judgments — this is the closing of the loop.</text>
+          </g>
+        </svg>
+      </div>
+      <p class="cap">Notice the two flows into the critic — the blue arrow from [A] <em>refines</em> the critic on verifiable-task rollouts, the pink arrow from [B] <em>queries</em> it on subjective-task rollouts. That asymmetric traffic is the loop: the critic spends its gradients on ground-truth-grounded updates, then spends its forward passes on ground-truth-ungrounded judgments. The policy update at the bottom consumes both kinds of reward through the same K1.5 squared-loss objective.</p>
+
+            <p>Put plainly: <b>[A] keeps the critic honest; [B] feeds critic scores into actor updates</b>. One actor, one critic, one gym. The paper's phrasing — "a way of using verifiable rewards to improve the estimation of non-verifiable rewards" — took me three readings to appreciate. That one line is the center of §3.2.</p>
+
+      <h3 class="sub">
+      4. Objective: the K1.5 squared loss
+      </h3>
+            <p>K2's policy optimization inherits K1.5's objective verbatim: sample K responses per prompt, center-subtract the reward, subtract a KL-like log-ratio regularizer, square. Not GRPO, not PPO — K1.5's own flavor.</p>
+
+      <div class="formula">
+        $$ \mathcal{L}_{\mathrm{RL}}(\theta)=\mathbb{E}_{x\sim\mathcal{D}}\!\left[\frac{1}{K}\sum_{i=1}^{K}\!\Big(r(x,y_i)-\bar{r}(x)-\tau\log\frac{\pi_\theta(y_i|x)}{\pi_{\mathrm{old}}(y_i|x)}\Big)^{\!2}\right] $$
+      </div>
+
+            <p>Here $\bar{r}(x) = \frac{1}{K}\sum_i r(x,y_i)$ is the K-sample mean (baseline), $\tau > 0$ controls the KL regularization (<em>note: this $\tau$ is a different quantity from the qk-clip threshold $\tau=100$ in §<a href="#pretrain">pretrain</a> — the paper reuses the symbol</em>). <b>The loss absorbs both verifiable r and critic-scored r̂ seamlessly</b> — from the actor's perspective, where the reward comes from doesn't matter. That's why joint RL barely adds complexity to the framework.</p>
+
+      <h3 class="sub">
+      5. Three stability tricks
+      </h3>
+      <div class="grid c3">
+        <div class="card">
+          <h4>Budget Control</h4>
+            <p>Per-task, per-sample token budget; overshoot → truncate + negative reward. <b>Directly targets "RL makes outputs balloon"</b> — longer outputs might pay off for reasoning, but elsewhere they're pure cost. The most pragmatic move in §3.2.3.</p>
+        </div>
+        <div class="card">
+          <h4>PTX Loss</h4>
+            <p>The InstructGPT-style PTX loss returns in K2 — mix a hand-picked high-quality dataset into the RL objective to prevent RL from forgetting core knowledge. Old-school move, still universally used, because it still works.</p>
+        </div>
+        <div class="card">
+          <h4>Temperature Decay</h4>
+            <p>High temperature early (for exploration), low temperature late (for stability). One schedule through the whole RL phase — <b>essentially the compromise of handling creative and stability-sensitive tasks with one model</b>.</p>
+        </div>
+      </div>
+
+      <h3 class="sub">
+      6. Infra: broadcasting 1T weights in 30 seconds
+      </h3>
+            <p>The main difference between RL and SFT is that <b>inference engines must absorb policy updates frequently</b>. For a 1T model, moving new weights from trainer to inferencer is itself a systems problem. Per §3.3.2, they built a <b>distributed checkpoint engine</b> (<a href="https://github.com/MoonshotAI/checkpoint-engine" target="_blank" rel="noopener">MoonshotAI/checkpoint-engine</a>) that streams parameter updates pipeline-style, bypassing any network filesystem — <b>a full parameter refresh lands in under 30 seconds</b>. An RL iteration is typically much longer than that, so switching overhead disappears.</p>
+
+            <p>Agentic rollout gets its own handling — because some rollouts are very long (multi-turn tool calls), <b>partial rollout</b> pauses long-tail trajectories for the next RL iteration. Heavy environments (VMs, code interpreters) are deployed as standalone services for easy scaling. None of this is paper-worthy on its own, but it's what lets agentic RL actually run on a 1T model.</p>
+    </div>
+  </section>
+
+  <!-- =========================== EVAL =========================== -->
+  <section id="eval">
+  <!-- principle: agentic eval is bounded by scaffold quality -->
+    <div class="wrap">
+      <h2 class="sec">evaluation <span class="desc-inline">// what the pipeline produced</span></h2>
+
+            <p>All K2-Instruct numbers are <b>non-thinking</b> (no extended CoT), with 8k output caps (16k for Agentless SWE). I'll only highlight the benchmarks that reveal the post-training style.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Benchmark</th>
+              <th class="num">K2-Instruct</th>
+              <th class="num">DeepSeek-V3-0324</th>
+              <th class="num">Claude Sonnet 4 (no-think)</th>
+              <th class="num">Claude Opus 4 (no-think)</th>
+              <th>what this shows</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>τ²-Bench (avg, retail / airline / telecom)</td>
+              <td class="num">66.1*</td><td class="num">46.9</td><td class="num">58.6</td><td class="num">66.3</td>
+              <td>Multi-turn tool use; open-source lead, trails Opus 4 by 0.2. <em>*K2 66.1 is the blog's task-weighted avg; the other columns are simple means of the three sub-tests</em>.</td>
+            </tr>
+            <tr>
+              <td>ACEBench (en)</td>
+              <td class="num"><b class="best">76.5</b></td><td class="num">72.7</td><td class="num">76.2</td><td class="num">75.6</td>
+              <td>Same story — and ACEBench inspired K2's data pipeline.</td>
+            </tr>
+            <tr>
+              <td>SWE-bench Verified (agentic, single)</td>
+              <td class="num">65.8</td><td class="num">38.8</td><td class="num">72.7</td><td class="num">72.5</td>
+              <td>Real-sandbox, real-reward training pays off — open-source lead, still 6–7 points behind closed-source.</td>
+            </tr>
+            <tr>
+              <td>SWE-bench Multilingual</td>
+              <td class="num">47.3</td><td class="num">25.8</td><td class="num">51.0</td><td class="num">—</td>
+              <td>Open-source lead (+21.5); still trails Sonnet 4 at 51.0.</td>
+            </tr>
+            <tr>
+              <td>LiveCodeBench v6</td>
+              <td class="num"><b class="best">53.7</b></td><td class="num">46.9</td><td class="num">48.5</td><td class="num">47.4</td>
+              <td>Competitive coding, SOTA — without thinking.</td>
+            </tr>
+            <tr>
+              <td>IFEval (Prompt Strict)</td>
+              <td class="num"><b class="best">89.8</b></td><td class="num">81.1</td><td class="num">87.6</td><td class="num">87.4</td>
+              <td>Hybrid verifier + anti-hack layer payoff.</td>
+            </tr>
+            <tr>
+              <td>Arena-Hard v2 · Creative Writing (win rate)</td>
+              <td class="num"><b class="best">85.0</b></td><td class="num">59.3</td><td class="num">54.6</td><td class="num">68.5</td>
+              <td><b>Direct payoff of the self-critique rubric reward</b> — far above everyone else.</td>
+            </tr>
+            <tr>
+              <td>FACTS Grounding (Adjusted)</td>
+              <td class="num"><b class="best">88.5</b></td><td class="num">68.3</td><td class="num">83.6</td><td class="num">—</td>
+              <td>Trained by the sentence-level faithfulness judge as reward.</td>
+            </tr>
+            <tr>
+              <td>AIME 2025 (Avg@64) · GPQA-Diamond (Avg@8)</td>
+              <td class="num">49.5 · <b class="best">75.1</b></td><td class="num">46.7 · 68.4</td><td class="num">33.1 · 70.0</td><td class="num">33.9 · 74.9</td>
+              <td>Math / STEM competitiveness in non-thinking regime.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+            <p>Of all the numbers, <b>Creative Writing 85.0</b> is the one I keep coming back to. Most benchmarks can be moved by data quality; creative writing is mostly judge-taste. K2 uses itself as judge, then anchors that judge on verifiable tasks — <span class="hi">effectively turning "judge-taste" into a closed loop on the one benchmark where nobody else has one</span>. Claude 4 Opus (no thinking) sits at 68.5; the 85.0 gap doesn't look like what RLHF-as-usual produces.</p>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">calibration warning — the paper admits this</span>
+        Appendix F.3 is unusually candid: <b>the anti-hack rubric forbids "I might be wrong"-style self-qualification</b>, and the preference for clarity and singularity penalizes hedging. The model ends up over-confident where it should hedge — which likely hurts on HLE (Humanity's Last Exam), where K2 scores just 4.7. So: not every "sharpness" gain is free; the trade-off lives on this axis.
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== CODE WALKTHROUGH =========================== -->
+  <section id="code">
+  <!-- principle: config.json reveals MuonClip tau and rope_theta -->
+    <div class="wrap">
+      <h2 class="sec">code walkthrough <span class="desc-inline">// what the weights actually say &middot; pinned config SHAs</span></h2>
+
+      <p>
+        Kimi K2's training code is closed, but three artifacts the release did ship tell you more than the paper: <code>config.json</code>, <code>tokenizer_config.json</code>, and the <a href="https://github.com/MoonshotAI/checkpoint-engine" target="_blank" rel="noopener"><code>checkpoint-engine</code></a> repo. Below I read each at a pinned commit SHA. Where the paper / blog / HF card disagree, the config wins.
+      </p>
+
+      <h3 class="sub">1. <code>config.json</code> — the DeepSeek-V3 class with five knobs turned</h3>
+
+      <p>
+        Pulled from <a href="https://huggingface.co/moonshotai/Kimi-K2-Instruct/blob/e2b02abe7060ab1cda51e77fd9c6d7b9be6dff77/config.json" target="_blank" rel="noopener"><code>Kimi-K2-Instruct/config.json</code> at SHA <code>e2b02ab</code></a>, elided for readability:
+      </p>
+
+      <pre><code class="language-json">{
+  "architectures": ["DeepseekV3ForCausalLM"],
+
+  "num_hidden_layers":           61,
+  "first_k_dense_replace":        1,
+  "hidden_size":               7168,
+  "intermediate_size":        18432,
+  "moe_intermediate_size":     2048,
+
+  "num_attention_heads":         64,
+  "num_key_value_heads":         64,
+  "q_lora_rank":               1536,
+  "kv_lora_rank":               512,
+  "qk_nope_head_dim":           128,
+  "qk_rope_head_dim":            64,
+  "v_head_dim":                 128,
+  "rope_theta":               50000,
+
+  "n_routed_experts":           384,
+  "num_experts_per_tok":          8,
+  "n_shared_experts":             1,
+  "norm_topk_prob":            true,
+  "routed_scaling_factor":    2.827,
+  "scoring_func":         "sigmoid",
+  "topk_method":         "noaux_tc",
+
+  "vocab_size":              163840,
+  "max_position_embeddings": 131072,
+
+  "torch_dtype":        "float8_e4m3fn"
+}</code></pre>
+
+      <p>
+        Read down the column and every paper claim from §2 lands back to a line in this file. <span>The five deltas vs DeepSeek-V3 are: <code>num_attention_heads</code> halved 128 → 64; <code>n_routed_experts</code> grown 256 → 384; <code>first_k_dense_replace</code> dropped 3 → 1; <code>rope_theta</code> bumped 10,000 → 50,000; <code>torch_dtype</code> set to FP8 E4M3 storage.</span> <span>The sparsity claim in the paper — "sparsity 48" — is exactly <code>n_routed_experts=384 / num_experts_per_tok=8</code>; DeepSeek-V3 at the same top-k lands at 32, which is why the paper's §2.3 MoE-FLOPs analysis pays off.</span> The MLA knobs (<code>q_lora_rank=1536</code>, <code>kv_lora_rank=512</code>) are kept from V3 verbatim; Moonshot didn't try to re-dimension MLA, they just used it.
+      </p>
+
+      <div class="callout" data-variant="k">
+        <span class="t">rope_theta = 50,000 &mdash; the one number worth underlining</span>
+        <p>DeepSeek-V3 runs at 10,000; GLM-5 lands at 1,000,000; Qwen3-VL at 5,000,000. K2's 50,000 sits between "short context" and "long context" territory — consistent with its 128K max_position_embeddings, annealed up from a 4K + 32K YaRN stage. This is exactly the sort of hyperparameter you cannot infer from the paper prose; the paper doesn't name the number, but every serving stack has to load this config and find out. <em>(Thinklab cross-reference: the <a href="../opd/" rel="noopener">on-policy-distillation</a> thoughts piece uses the same Qwen3 / K2 / V3 rope_theta matrix to anchor a different argument; consistent values across all three articles.)</em></p>
+      </div>
+
+      <h3 class="sub">2. <code>tokenizer_config.json</code> — 163,840-token vocab, tool_call native</h3>
+
+      <p>
+        From <a href="https://huggingface.co/moonshotai/Kimi-K2-Instruct/blob/e2b02abe7060ab1cda51e77fd9c6d7b9be6dff77/tokenizer_config.json" target="_blank" rel="noopener"><code>tokenizer_config.json</code></a>, the specials that matter:
+      </p>
+
+      <pre><code class="language-json">{
+  "added_tokens_decoder": {
+    "163584": {"content": "&lt;|im_end|&gt;",        "special": true},
+    "163585": {"content": "&lt;|im_user|&gt;",       "special": true},
+    "163586": {"content": "&lt;|im_assistant|&gt;",  "special": true},
+    "163587": {"content": "&lt;|im_middle|&gt;",     "special": true},
+    "163588": {"content": "&lt;|im_system|&gt;",     "special": true},
+    "163601": {"content": "&lt;|tool_calls_section_begin|&gt;", "special": true},
+    "163602": {"content": "&lt;|tool_calls_section_end|&gt;",   "special": true},
+    "163603": {"content": "&lt;|tool_call_begin|&gt;",          "special": true},
+    "163604": {"content": "&lt;|tool_call_argument_begin|&gt;", "special": true},
+    "163605": {"content": "&lt;|tool_call_end|&gt;",            "special": true}
+  }
+}</code></pre>
+
+      <p>
+        <span>The K2 tokenizer reserves five contiguous slots (163601–163605) for a structured tool-call schema: a section-level open/close pair plus per-call begin / argument-begin / end</span>. The model emits these atomically, so a partial tool-call string can't be produced by accident — the chat template can rely on "if I see 163603, a tool_call_end follows at 163605 with well-formed JSON arguments between them". That's the concrete shape of the <a href="#data">agentic data factory</a>'s "3000+ MCP tools" — every one of those tools is represented in training as a fragment that uses these specials, and the tokenizer treats them as first-class.
+      </p>
+
+      <h3 class="sub">3. MuonClip in code — the exact post-update loop</h3>
+
+      <p>
+        No modeling file ships in the open-weights release, so the pseudocode in <a href="#pretrain">§muonclip</a> is the best public reference. What you <em>can</em> see is how the attention block is structured for the clip to have a target: each MLA head exposes its own <code>W_qc^h</code>, <code>W_kc^h</code>, <code>W_qr^h</code> slices in memory (they're per-head sub-tensors inside <code>W_q</code> / <code>W_k</code>, not shared projection matrices). The DeepSeek-V3 modeling code on Hub (pinned at its own SHA for reference) is the cleanest place to read the per-head split:
+      </p>
+
+      <pre><code class="language-python"># MLA attention per-head split, paraphrased from DeepseekV3ForCausalLM
+# modeling code at SHA a878eaff76… on Hub. K2 uses the same class.
+
+# Q projection: 7168 -> q_lora_rank=1536 -> (num_heads, qk_nope_head_dim + qk_rope_head_dim)
+q = self.q_a_proj(h)                            # [B, L, 1536]
+q = self.q_a_layernorm(q)
+q = self.q_b_proj(q)                            # [B, L, 64 * (128 + 64)]
+q = q.view(B, L, 64, 128 + 64)                  # [B, L, num_heads, qk_head_dim]
+q_c, q_r = q.split([128, 64], dim=-1)           # content / rope split per head
+
+# K projection: shared kv_a + per-head kv_b, plus a separate k_rope from h
+kv  = self.kv_a_proj_with_mqa(h)                # [B, L, 512 + 64]
+c_kv, k_r = kv.split([512, 64], dim=-1)         # compressed latent + shared rotary
+c_kv = self.kv_a_layernorm(c_kv)                # [B, L, 512]
+kv  = self.kv_b_proj(c_kv)                      # [B, L, 64 * (128 + 128)]
+kv  = kv.view(B, L, 64, 128 + 128)
+k_c, v = kv.split([128, 128], dim=-1)           # per-head content key + value
+k_r = k_r.view(B, L, 1, 64)                     # SHARED across heads
+
+# MuonClip rescales W_qc^h / W_kc^h by sqrt(gamma_h), W_qr^h by gamma_h,
+# NEVER kv_a_proj_with_mqa's k_rope channel (that's k_r, shared).</code></pre>
+
+      <p>
+        The shape comments are what matter: <code>q_r</code> and <code>q_c</code> are both per-head (<code>[B, L, 64, &middot;]</code>), but <code>k_r</code> is <code>[B, L, 1, 64]</code> — broadcast across heads at the attention score computation. That's exactly why MuonClip's §2.1 algorithm treats <code>W_kr</code> specially: the weight matrix that produced <code>k_r</code> is <em>not</em> per-head, so rescaling it would affect every head simultaneously. Without this asymmetry the per-head rescale wouldn't be well-defined, and the clip would have to become global. To avoid that, the rescale goes to the query side alone (<code>W_qr^h</code> gets the full gamma), while <code>W_qc^h</code> and <code>W_kc^h</code> both take the sqrt because both are per-head and both multiply into the pre-softmax logit.
+      </p>
+
+      <h3 class="sub">4. <code>checkpoint-engine</code> — how 1T weights broadcast in 30s</h3>
+
+      <p>
+        The <a href="https://github.com/MoonshotAI/checkpoint-engine/tree/e2b02abe7060ab1cda51e77fd9c6d7b9be6dff77" target="_blank" rel="noopener">MoonshotAI/checkpoint-engine repo</a> is the piece most likely to get adopted outside Moonshot — it's a drop-in "stream fresh policy weights from trainer to inferencer" service that keeps RL iterations from stalling on the weight transfer. The paper §3.3.2 claim that a full 1T-parameter refresh lands in under 30 seconds is load-bearing for the whole RL system: an RL iteration (rollout + update) typically takes minutes, so 30 seconds of weight-transfer becomes a fixed cost that stops scaling with model size.
+      </p>
+
+      <p class="principle">
+        <strong>Why the code walkthrough matters here</strong> — K2's paper is explicit about the algorithmic pieces (MuonClip, rubric-reward closed loop, partial rollout) but understated about the system-integration cost. Reading the shipped config + the checkpoint-engine repo <em>together</em> is the only way to see how cheap the composite was for Moonshot to pull off: the config is 90 lines of JSON and the weight-transfer service is a ~2K-line Python package. Everything else is the 15.5T-token pre-training run, which nobody else is re-running anyway.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================== TAKEAWAYS =========================== -->
+  <section id="takeaways">
+    <div class="wrap">
+      <h2 class="sec">takeaways <span class="desc-inline">// signed off</span></h2>
+      <div class="grid c2">
+        <div class="card">
+          <h4>[01] The real contribution is post-training</h4>
+            <p>MuonClip is beautiful engineering, but it's table stakes for anyone who wants Muon at 1T. K2's real moat is <b>productionizing the agentic data factory and the closed-loop RL at 1T scale</b>. Can others copy it? The data factory, sure (concept isn't hard). The closed-loop critic, sure (algorithmically simple). But running them jointly on a 1T model — 30-second checkpoint broadcast, 10k concurrent k8s sandboxes, partial rollout, one K2 serving as both actor and judge — that <em>systems</em> integration is what Moonshot is actually selling.</p>
+        </div>
+        <div class="card">
+          <h4>[02] Rubrics look like the next coordinate system after RLHF</h4>
+            <p>Constitutional AI told us principles can stand in for human labels; K2 tells us task-specific rubrics can stand in for principles. All three point the same way: <b>alignment signal moves from "human preference" → "global rules" → "task-specific checklists", each step more engineerable</b>. I'd expect two or three more labs to ship rubric-reward post-training within two years.</p>
+        </div>
+        <div class="card">
+          <h4>[03] Non-thinking agents work fine</h4>
+            <p>The entire paper is non-thinking. τ²-Bench 66.1 and SWE-Verified 65.8 are "reflex-grade" — which matters for agent latency. My prior was "agents need thinking"; K2 pushes back: <b>when post-training bakes agentic patterns into the weights, inference-time thinking becomes optional</b>. The cost doesn't disappear, it just shifts to the training end.</p>
+        </div>
+        <div class="card">
+          <h4>[04] A few open points I'd still verify</h4>
+            <p>A few gaps the paper doesn't fill: <b>RL τ (KL strength), rubric weighting, rollout size per RL iteration, agentic SFT token count, and the preference-data size for critic-head initialization</b>. These are the biggest reproducibility gaps — "large-scale" without numbers. The <b>activated params discrepancy (paper 32.6B vs HF 32B) I already flagged above</b>.</p>
+        </div>
+        <div class="card">
+          <h4>[05] MuonClip was the symptom; Muon Split is the cause</h4>
+            <p>The follow-up paper worth naming is GLM-5 (2026-02). Their <strong>Muon Split</strong> (see <a href="../glm-5/#mla-muon" rel="noopener">glm-5 deep-dive</a>) replaces the per-head orthogonalization target: instead of feeding Muon's Newton-Schulz the whole <code>[d_head · n_heads, d_latent]</code> stacked matrix, split it into <em>n_heads</em> independent blocks and orthogonalize each separately. Each head gets its own singular-value budget; no head needs to grow weights to compensate; the logit blow-up MuonClip was invented to patch <em>never happens</em>. K2 treated the symptom with a post-update rescale; GLM-5 treats the cause with a smaller orthogonalization target. Read as a lineage: this is the paper that makes MuonClip a waypoint, not a destination.</p>
+        </div>
+        <div class="card">
+          <h4>[06] Closed-loop RL generalizes into cross-stage distillation</h4>
+            <p>K2's trick is <em>using verifiable rewards to anchor a subjective-reward critic</em>. The <a href="../opd/" rel="noopener">Thinking Machines Lab on-policy-distillation piece</a> reframes this axis as "sampling-policy × reward-density", and GLM-5's <a href="../glm-5/#distill" rel="noopener">cross-stage distillation</a> productionizes the on-policy half at stage-to-stage granularity. K2 closed the loop <em>within</em> one RL stage; GLM-5 closes it <em>between</em> stages. The map is the same — anchor a soft reward in something harder — but the scope is bigger. I'd read the three together.</p>
+        </div>
+      </div>
+
+      <div class="callout" data-variant="ok" style="margin-top:28px">
+        <span class="t">// end of notebook</span>
+        If K1.5 was Moonshot proving RL-scaling to themselves, K2 is them doing it all again and open-sourcing every link of the pipeline. If you're building agentic post-training, this paper plus the <code>checkpoint-engine</code> repo are the two most practical references of the year.
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== REFERENCES =========================== -->
+  <section id="references">
+    <div class="wrap">
+      <h2 class="sec">references</h2>
+      <ul>
+        <li>Paper · <a href="https://arxiv.org/abs/2507.20534" target="_blank" rel="noopener">Kimi Team. Kimi K2: Open Agentic Intelligence. arXiv:2507.20534, 2025</a>.</li>
+        <li>Official blog · <a href="https://moonshotai.github.io/Kimi-K2/" target="_blank" rel="noopener">moonshotai.github.io/Kimi-K2</a> — MuonClip formula sketch, use-case demos.</li>
+        <li>Model card · <a href="https://huggingface.co/moonshotai/Kimi-K2-Instruct" target="_blank" rel="noopener">moonshotai/Kimi-K2-Instruct</a> — config.json, chat template, fp8 weights.</li>
+        <li>Inference code · <a href="https://github.com/MoonshotAI/Kimi-K2" target="_blank" rel="noopener">MoonshotAI/Kimi-K2</a>.</li>
+        <li>Checkpoint engine · <a href="https://github.com/MoonshotAI/checkpoint-engine" target="_blank" rel="noopener">MoonshotAI/checkpoint-engine</a> — the distributed parameter-update service cited in §3.3.2.</li>
+        <li>Prior work · <a href="https://arxiv.org/abs/2412.19437" target="_blank" rel="noopener">DeepSeek-V3 Technical Report (arXiv:2412.19437)</a> — the architectural reference K2 inherits from.</li>
+        <li>Prior work · <a href="https://arxiv.org/abs/2502.16982" target="_blank" rel="noopener">Moonlight / Muon scaling (arXiv:2502.16982)</a> — Moonshot's earlier evidence on Muon's token efficiency.</li>
+        <li>Prior work · <a href="https://kellerjordan.github.io/posts/muon/" target="_blank" rel="noopener">Muon: an optimizer for hidden layers (Jordan et al., 2024)</a> — the Muon optimizer itself.</li>
+      </ul>
+    </div>
+  </section>
+
+</div><!-- /.shell -->
+
+<script src="../../assets/theme.js"></script>
+</body>
+</html>

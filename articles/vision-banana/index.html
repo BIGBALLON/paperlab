@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Vision Banana instruction-tunes Nano Banana Pro into a generalist perception model by piping every vision task output through an invertible RGB codec. A power-transform + Hilbert-curve mapping carries metric depth through the color cube; per-prompt color dictionaries carry segmentation; normals inherit RGB natively. The generator beats SAM 3, Depth Anything 3, and Lotus-2 zero-shot while keeping 53.5%/47.8% head-to-head rates against its own base on generation — not because a new vision backbone shipped, but because perception was reframed as RGB generation with an invertible channel." />
+<meta name="theme-color" content="#05070a" />
+<title>Vision Banana · Perception Through an Invertible RGB Codec — thinklab</title>
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+<link rel="canonical" href="/articles/vision-banana/" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" /></noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" />
+<link rel="stylesheet" href="../../assets/theme.css" />
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="(window.requestIdleCallback||function(f){return setTimeout(f,0)})(function(){renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});});"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</head>
+<body class="page-article">
+
+<a class="home-btn" href="../../" aria-label="Back to index"><span class="arrow">&larr;</span><span class="label">cd&nbsp;~</span></a>
+<div id="scroll-progress" aria-hidden="true"></div>
+<button id="to-top" aria-label="back to top" title="back to top">&uarr;</button>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="G-blue"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#1b2b52"/><stop offset="1" stop-color="#0a1124"/></linearGradient>
+    <linearGradient id="G-violet" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#2e1a55"/><stop offset="1" stop-color="#180c32"/></linearGradient>
+    <linearGradient id="G-teal"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0d3d33"/><stop offset="1" stop-color="#062018"/></linearGradient>
+    <linearGradient id="G-orange" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4a2414"/><stop offset="1" stop-color="#22100a"/></linearGradient>
+    <linearGradient id="G-pink"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4e1a33"/><stop offset="1" stop-color="#26091a"/></linearGradient>
+    <linearGradient id="G-slate"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#11162a"/><stop offset="1" stop-color="#070a14"/></linearGradient>
+    <linearGradient id="G-green"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0b3a22"/><stop offset="1" stop-color="#051f12"/></linearGradient>
+    <linearGradient id="G-yellow" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#3d3614"/><stop offset="1" stop-color="#1c190a"/></linearGradient>
+    <linearGradient id="G-cube-k-r"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#ff3030"/></linearGradient>
+    <linearGradient id="G-cube-r-y"><stop offset="0" stop-color="#ff3030"/><stop offset="1" stop-color="#ffe000"/></linearGradient>
+    <linearGradient id="G-cube-y-g"><stop offset="0" stop-color="#ffe000"/><stop offset="1" stop-color="#39ff88"/></linearGradient>
+    <linearGradient id="G-cube-g-c"><stop offset="0" stop-color="#39ff88"/><stop offset="1" stop-color="#00e5ff"/></linearGradient>
+    <linearGradient id="G-cube-c-b"><stop offset="0" stop-color="#00e5ff"/><stop offset="1" stop-color="#3a3cff"/></linearGradient>
+    <linearGradient id="G-cube-b-v"><stop offset="0" stop-color="#3a3cff"/><stop offset="1" stop-color="#9d7bff"/></linearGradient>
+    <linearGradient id="G-cube-v-w"><stop offset="0" stop-color="#9d7bff"/><stop offset="1" stop-color="#f0f0ff"/></linearGradient>
+    <pattern id="P-grid" width="22" height="22" patternUnits="userSpaceOnUse">
+      <path d="M 22 0 L 0 0 0 22" fill="none" stroke="#1a2338" stroke-width=".5"/>
+      <circle cx="0" cy="0" r="1" fill="#2a3458" opacity=".55"/>
+    </pattern>
+    <marker id="A-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#00e5ff"/></marker>
+    <marker id="A-green"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#39ff88"/></marker>
+    <marker id="A-mag"    viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ff3fa4"/></marker>
+    <marker id="A-amber"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffd166"/></marker>
+    <marker id="A-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9d7bff"/></marker>
+    <filter id="F-glow">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<div class="shell">
+
+  <!-- =========================== HERO =========================== -->
+  <header class="hero">
+    <div class="hero-term">
+      <div class="term-bar">
+        <span class="term-dot d-r"></span>
+        <span class="term-dot d-y"></span>
+        <span class="term-dot d-g"></span>
+        <span class="term-title">~/deepmind/vision-banana &mdash; codec.py</span>
+      </div>
+      <div class="term-body">
+        <div class="term-prompt">
+          <span class="path">reader@thinklab</span>:<span class="cmd">~/vision-banana</span>$ python -c "import nano_banana_pro as g; g.generate(prompt, decode=codec.depth)"<span class="cursor"></span>
+        </div>
+        <h1>Vision Banana &middot; Perception Through an Invertible RGB Codec</h1>
+        <p class="sub">
+          <span class="line">The <a href="https://arxiv.org/abs/2604.20329" target="_blank" rel="noopener">Vision Banana report</a> (Gabeur, Long, Peng et&nbsp;al., 22 Apr 2026) is easy to read as "another multimodal model" &mdash; the headline says it beats <a href="https://arxiv.org/abs/2511.16719" target="_blank" rel="noopener">SAM&nbsp;3</a>, <a href="https://arxiv.org/abs/2511.10647" target="_blank" rel="noopener">Depth Anything&nbsp;3</a>, and <a href="https://arxiv.org/abs/2512.01030" target="_blank" rel="noopener">Lotus&nbsp;2</a>. That reading misses what is actually novel. The instruction-tuned base is <a href="https://blog.google/innovation-and-ai/products/nano-banana-pro/" target="_blank" rel="noopener">Nano Banana Pro</a>; the training data is "a small amount of vision task data" mixed into NBP's own pretraining set (<em>&sect;2</em>). The piece doing the actual work is upstream of both.</span>
+          <span class="line">The real contribution is a <strong>codec</strong>: a set of invertible maps from per-pixel task outputs &mdash; class labels, instance masks, metric depth in meters, surface normals in $\mathbb{R}^3$ &mdash; into the RGB cube, and a prompt grammar that tells the generator which codec is in force this sample. Frame perception as RGB generation with a <em>bijection</em> in the output channel, and a frozen-ish image generator plus a thin instruction mixture saturates the benchmarks built for architectures that were designed to do only perception.</span>
+        </p>
+        <div class="hero-badges">
+          <span class="hero-badge" data-variant="green">NBP + &lt;&lt; 1% task mix</span>
+          <span class="hero-badge" data-variant="cyan">Cityscapes mIoU 0.699</span>
+          <span class="hero-badge" data-variant="magenta">ReasonSeg gIoU 0.793</span>
+          <span class="hero-badge" data-variant="violet">Depth &delta;<sub>1</sub> 0.929 (4-ds)</span>
+          <span class="hero-badge" data-variant="amber">API-only &middot; no weights</span>
+        </div>
+        <div class="hero-toc">
+          <a href="#thesis">thesis</a>
+          <a href="#template">template</a>
+          <a href="#codec">the codec</a>
+          <a href="#two-d">2D</a>
+          <a href="#three-d">3D</a>
+          <a href="#generation">generation kept</a>
+          <a href="#reading">what's load-bearing</a>
+          <a href="#open">open</a>
+          <a href="#takeaways">takeaways</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================== TL;DR =========================== -->
+  <div class="callout" data-variant="k">
+    <span class="t">TL;DR</span>
+    <p>The observation that motivated this paper isn't "generators can do perception"&thinsp;&mdash;&thinsp;it's the more uncomfortable one <a href="https://arxiv.org/abs/2512.15110" target="_blank" rel="noopener">Zuo et al. (2025)</a> documented: prompt <a href="https://blog.google/innovation-and-ai/products/nano-banana-pro/" target="_blank" rel="noopener">Nano Banana Pro</a> for a depth map and you get something <em>subjectively gorgeous</em>, with hallucinated high-frequency details, that <strong>loses to specialists on PSNR/SSIM</strong> because pixel-consistency metrics punish plausibility-without-exactness. Vision Banana (Gabeur, Long, Peng et al., <a href="https://arxiv.org/abs/2604.20329" target="_blank" rel="noopener">arXiv:2604.20329</a>, 22 Apr 2026) is the fix: <strong>design an invertible RGB codec per task, instruction-tune NBP on a thin joint mixture so it renders the codec reliably, then evaluate after inverting the codec back to physical units</strong>&thinsp;&mdash;&thinsp;so the generator's pixel noise stops being what the benchmark measures. The load-bearing piece is the depth codec, Eq.&nbsp;1: a power transform $f(d,\lambda,c) = 1 - (1 - d/(\lambda c))^{\lambda+1}$ from <a href="https://arxiv.org/abs/2502.10647" target="_blank" rel="noopener">Barron 2025</a> (constrained to $\lambda<-1$, with $\lambda=-3,\, c=10/3$) warping $[0,\infty) \to [0,1)$, followed by a Gray-code Hamiltonian path through the 8 corners of the RGB cube (K→R→Y→G→C→B→V→W, each step flips one bit&thinsp;&mdash;&thinsp;I verified) so the scalar rides along the cube's edges with locality preserved. The composition is a <em>bijection</em>&thinsp;&mdash;&thinsp;at inference you project the generated RGB to the nearest edge of the walk, invert the interpolation, invert the power transform, recover meters. Under this codec VB reaches <strong>Cityscapes mIoU 0.699 vs SAM&nbsp;3's 0.652</strong> (Tab. 2a); <strong>ReasonSeg gIoU 0.793 vs 0.770</strong> against the SAM 3 Agent + Gemini 2.5 Pro pipeline (Tab. 2d); <strong>0.929 δ₁</strong> on Depth Anything 3's own 4-dataset evaluation set vs DA3's <strong>0.918</strong> (Tab. 3 footnote, <em>re-computed: 0.948+0.935+0.917+0.915 = 3.715/4 = 0.9288</em>), <em>without using camera intrinsics in training or inference</em>; and surface-normal mean angular error of <strong>18.928°</strong> vs Lotus-2's <strong>19.642°</strong> on the 4-dataset average (Tab. 1), or <strong>15.549° vs 16.558°</strong> on the 3 indoor datasets alone (Tab. 4 "Average" column). Generation capability is preserved: human-preference win rates vs NBP are <strong>53.5% on GenAI-Bench / 47.8% on ImgEdit</strong> (Tab. 1). The base model is Google-internal and no weights for VB ship; every number in this article is tagged paper-§N, from my arithmetic, or marked "could not verify".</p>
+  </div>
+
+  <!-- =========================== THESIS =========================== -->
+  <section id="thesis">
+    <div class="wrap">
+      <h2 class="sec">thesis <span class="desc-inline">// the codec exists to defeat pixel-consistency metrics</span></h2>
+
+      <p>The paper's headline &mdash; "image generators are generalist vision learners" (&sect;1, &sect;4) &mdash; is the advertisement. I want to strip it and look at the mechanism underneath, because the advertisement can only be supported by ablations this paper does not run (e.g., instruction-tune a non-generative foundation model at the same scale with the same codec and see how close it gets), whereas the mechanism is <em>verifiable</em> from the paper plus two specific pieces of prior work.</p>
+
+      <p>The two pieces of prior work that motivate this paper, named in &sect;1 and again in the discussion:</p>
+
+      <ul>
+        <li><strong><a href="https://arxiv.org/abs/2509.20328" target="_blank" rel="noopener">Wiedemer et al., <em>Video models are zero-shot learners and reasoners</em></a></strong> (Sep 2025) &mdash; shows Google's Veo 3 can zero-shot solve segmentation, edge detection, image editing, physical-property inference, object-affordance recognition, tool-use simulation, and even basic visual reasoning like maze and symmetry solving &mdash; <em>with prompting alone</em>. The <em>capability</em> exists in the generator; the question is whether you can benchmark it.</li>
+        <li><strong><a href="https://arxiv.org/abs/2512.15110" target="_blank" rel="noopener">Zuo et al., <em>Is Nano Banana Pro a Low-Level Vision All-Rounder?</em></a></strong> (Dec 2025) &mdash; evaluates NBP zero-shot on 14 low-level tasks / 40 datasets. The <em>finding</em> is a clean dichotomy: NBP's outputs are subjectively gorgeous with hallucinated high-frequency details that often exceed specialists, <strong>but they lose on PSNR/SSIM and reference-based metrics</strong> because pixel-consistency scoring punishes plausibility-without-exactness. The generator speaks "semantically plausible"; the benchmarks speak "pixel-exact".</li>
+      </ul>
+
+      <p>Put these two together and Vision Banana's contribution comes into focus. Veo/NBP already have the visual understanding; Zuo already documented the benchmark-mismatch that makes that understanding look worse than it is. The question isn't "can a generator learn perception" &mdash; Wiedemer answered that &mdash; but <strong>"can you route a generator's output into a benchmark's scoring pipeline without losing the plausibility in translation"</strong>. That is exactly what the codec does.</p>
+
+      <div class="callout" data-variant="ok" style="margin-top:10px">
+        <span class="t">the mechanism claim, precisely</span>
+        <p>Vision Banana doesn't make Nano Banana Pro render more accurate <em>pixels</em>. It <strong>changes the evaluation channel</strong>. Instead of scoring the generated RGB at pixel level (where NBP's stochastic plausibility costs it), the codec defines a bijection $\phi : \text{task-quantity} \leftrightarrow \text{RGB}$ so that at inference the benchmark metric is computed after <em>$\phi^{-1}$</em>: generate RGB, invert $\phi$, recover meters / masks / unit vectors, run $\delta_1$ / mIoU / angular error <em>on those</em>. Pixel-level noise inside a codec-cell becomes irrelevant &mdash; only the cell index matters, and the generator is strong enough to put the right cell in the right pixel. Zuo's dichotomy is resolved in one move: you no longer ask the generator to beat a specialist at pixel fidelity; you ask it to place the right <em>codec symbol</em> at the right location, and measure the quantity behind the symbol.</p>
+      </div>
+
+      <p>Under this reading the contribution is narrower than "generators are generalist learners" but <em>stronger</em> as an engineering claim. Three things fall out of it:</p>
+
+      <ol>
+        <li><strong>The tasks VB beats are the ones with a clean bijective codec.</strong> Semantic segmentation: trivially bijective via per-prompt color dictionary. Surface normals: trivially bijective via affine map to RGB (a unit vector in $[-1,1]^3$ goes to $(r,g,b) = (x+1, y+1, z+1)/2$). Referring expression segmentation: the mask is a bit-array, trivially bijective. <em>Metric depth</em>: the hard one, because $[0, \infty) \not\subseteq [0,1]^3$ without a clever warp, which is why the paper's one equation (Eq. 1) is about depth and nothing else.</li>
+        <li><strong>The one task VB loses is the one where the codec breaks down.</strong> Instance segmentation on SA-Co/Gold (Tab. 2b, 0.540* vs DINO-X's 0.552): the number of instances per class isn't known at prompt time, so there's no clean bijection; the paper's "one-class-per-inference" workaround (&sect;3.1) asks the generator to invent a per-instance color assignment at output time. That's not a bijection, it's an open-ended encoding, and the metric gap shows.</li>
+        <li><strong>The result is specifically <em>metric</em>, not relative.</strong> Earlier diffusion-based depth work &mdash; e.g. <a href="https://arxiv.org/abs/2312.02145" target="_blank" rel="noopener">Marigold (Ke et al., CVPR 2024)</a> &mdash; produces <em>affine-invariant</em> depth: the output needs per-scene alignment of scale and shift against ground truth before it can be evaluated. That's a weaker claim than VB's, which outputs depth directly in meters because the codec is designed to carry absolute scale. The power transform + cube walk exist precisely to push $[0, \infty)$ into $[0, 1]^3$ without collapsing the near-field precision needed for a metric measurement. This is the concrete upgrade over the prior diffusion-as-perception lineage (Marigold, <a href="https://arxiv.org/abs/2409.18124" target="_blank" rel="noopener">Lotus</a>, <a href="https://arxiv.org/abs/2502.17157" target="_blank" rel="noopener">Diception</a>), each of which needed an alignment step at inference or fine-tuned away the base model's generation ability.</li>
+      </ol>
+
+      <p>The rest of this piece reads the paper through that mechanism. I walk the template first (what instruction-tuning does and does not change &mdash; the safety rail against forgetting), then the codec (where the real design work lives, and where this paper most clearly extends Marigold/Lotus/Diception), then the benchmark tables with the specialist-mapping correct this time. The accent palette on figures: <span style="color:#39ff88"><b>green = Vision Banana</b></span>, <span style="color:#ff3fa4"><b>magenta = prior specialist</b></span>, <span style="color:#ffb020"><b>amber = caveat / loss</b></span>.</p>
+    </div>
+  </section>
+
+  <!-- =========================== TEMPLATE =========================== -->
+  <section id="template">
+    <div class="wrap">
+      <h2 class="sec">template <span class="desc-inline">// NBP + a thin mixture + RGB decoders</span></h2>
+
+      <p>The paper's method section (&sect;2) is <em>two paragraphs</em>. That's not because the method is trivial; it's because the method rides on top of an already-trained base. The recipe has three pieces and each one exists so the other two don't have to work harder.</p>
+
+      <div class="fig-wrap accent-green">
+        <div class="fig-bar">
+          <span class="fig-bar-title">VISION BANANA &middot; FROM BASE GENERATOR TO GENERALIST PERCEIVER</span>
+          <span class="fig-bar-id">fig: pipe/template</span>
+        </div>
+        <svg viewBox="0 0 1180 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The Vision Banana training and inference pipeline. Nano Banana Pro's own image-generation training mix is augmented with a small slice of vision-task data whose ground-truth outputs have been pre-encoded as RGB through an invertible codec; the joint mixture is used for a lightweight instruction-tuning stage that produces Vision Banana; at inference a text prompt specifies which codec is in force, the tuned model generates an RGB image, and an invertible decode recovers the task output for evaluation.">
+          <rect x="0" y="0" width="1180" height="340" fill="url(#P-grid)" opacity=".45"/>
+
+          <!-- header -->
+          <g>
+            <rect x="20" y="8" width="1140" height="22" rx="3" fill="#0a0e14" stroke="rgba(57,255,136,.22)"/>
+            <text x="36" y="23" fill="#39ff88" font-size="10" font-weight="700" letter-spacing=".14em">◆ TRAINING (top) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ INFERENCE (bottom)</text>
+            <text x="1144" y="23" fill="#8b949e" font-size="10" text-anchor="end" letter-spacing=".06em">§2 method</text>
+          </g>
+
+          <!-- TRAINING row -->
+          <!-- NBP's own training mix -->
+          <g transform="translate(30,48)">
+            <rect x="0" y="0" width="210" height="82" rx="8" fill="url(#G-slate)" stroke="rgba(139,148,158,.55)"/>
+            <text x="105" y="22" text-anchor="middle" fill="#c9d1d9" font-size="11" font-weight="700" letter-spacing=".1em">NBP TRAINING MIX</text>
+            <text x="105" y="44" text-anchor="middle" fill="#e6edf3" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">text-to-image pairs</text>
+            <text x="105" y="62" text-anchor="middle" fill="#8b949e" font-size="10">the base-model corpus</text>
+            <text x="105" y="76" text-anchor="middle" fill="#6e7681" font-size="9">kept unchanged · dominant share</text>
+          </g>
+
+          <!-- plus -->
+          <text x="260" y="92" text-anchor="middle" fill="#8b949e" font-size="16" font-family="'JetBrains Mono',monospace" font-weight="700">+</text>
+
+          <!-- Vision task slice -->
+          <g transform="translate(280,48)">
+            <rect x="0" y="0" width="250" height="82" rx="8" fill="url(#G-green)" stroke="#39ff88" stroke-opacity=".65"/>
+            <text x="125" y="22" text-anchor="middle" fill="#39ff88" font-size="11" font-weight="700" letter-spacing=".1em">VISION TASK SLICE (tiny)</text>
+            <text x="125" y="42" text-anchor="middle" fill="#d8ffe6" font-size="11" font-family="'JetBrains Mono',monospace" font-weight="700">(image, prompt, codec-encoded RGB)</text>
+            <text x="125" y="60" text-anchor="middle" fill="#9eff9e" font-size="10">in-house 2D annotations · synthetic 3D</text>
+            <text x="125" y="76" text-anchor="middle" fill="#9eff9e" font-size="10">"very low ratio" · no benchmark train splits</text>
+          </g>
+
+          <!-- instruction-tune arrow -->
+          <path d="M 534 89 L 600 89" fill="none" stroke="#00e5ff" stroke-width="1.8" marker-end="url(#A-accent)"/>
+          <text x="567" y="82" text-anchor="middle" fill="#00e5ff" font-size="9" font-weight="700" letter-spacing=".1em">INSTRUCTION-TUNE</text>
+
+          <!-- Vision Banana checkpoint -->
+          <g transform="translate(610,48)">
+            <rect x="0" y="0" width="230" height="82" rx="8" fill="url(#G-teal)" stroke="#39ff88" stroke-width="1.2"/>
+            <text x="115" y="22" text-anchor="middle" fill="#39ff88" font-size="11" font-weight="700" letter-spacing=".1em">VISION BANANA WEIGHTS</text>
+            <text x="115" y="42" text-anchor="middle" fill="#d8ffe6" font-size="11" font-family="'JetBrains Mono',monospace" font-weight="700">one checkpoint, one token vocab</text>
+            <text x="115" y="60" text-anchor="middle" fill="#9eff9e" font-size="10">NBP-scale params · no new heads</text>
+            <text x="115" y="76" text-anchor="middle" fill="#9eff9e" font-size="10">both gen &amp; perception tasks</text>
+          </g>
+
+          <!-- two forks: generation quality / perception — cards moved down 4px to clear header (8..30) -->
+          <path d="M 844 70 L 900 56" fill="none" stroke="#ff3fa4" stroke-width="1.4" marker-end="url(#A-mag)"/>
+          <path d="M 844 108 L 900 124" fill="none" stroke="#9d7bff" stroke-width="1.4" marker-end="url(#A-violet)"/>
+
+          <g transform="translate(905,34)">
+            <rect x="0" y="0" width="245" height="42" rx="6" fill="url(#G-pink)" stroke="#ff3fa4" stroke-opacity=".55"/>
+            <text x="122" y="16" text-anchor="middle" fill="#ff3fa4" font-size="10" font-weight="700" letter-spacing=".08em">GENERATION STILL WORKS</text>
+            <text x="122" y="32" text-anchor="middle" fill="#ffd7e6" font-size="10" font-family="'JetBrains Mono',monospace">GenAI-Bench 53.5% / ImgEdit 47.8% vs NBP</text>
+          </g>
+          <g transform="translate(905,104)">
+            <rect x="0" y="0" width="245" height="42" rx="6" fill="url(#G-violet)" stroke="#9d7bff" stroke-opacity=".6"/>
+            <text x="122" y="16" text-anchor="middle" fill="#9d7bff" font-size="10" font-weight="700" letter-spacing=".08em">PERCEPTION NOW WORKS</text>
+            <text x="122" y="32" text-anchor="middle" fill="#e2d7ff" font-size="10" font-family="'JetBrains Mono',monospace">SAM 3 / D-Any 3 / Lotus-2 beaten</text>
+          </g>
+
+          <!-- divider -->
+          <line x1="40" y1="170" x2="1140" y2="170" stroke="rgba(139,148,158,.25)" stroke-dasharray="4 4"/>
+          <text x="590" y="184" text-anchor="middle" fill="#8b949e" font-size="10" font-weight="700" letter-spacing=".16em">↓ AT INFERENCE</text>
+
+          <!-- INFERENCE row -->
+          <g transform="translate(30,198)">
+            <rect x="0" y="0" width="210" height="82" rx="8" fill="url(#G-blue)" stroke="rgba(0,229,255,.55)"/>
+            <text x="105" y="22" text-anchor="middle" fill="#00e5ff" font-size="11" font-weight="700" letter-spacing=".1em">TASK PROMPT</text>
+            <text x="105" y="42" text-anchor="middle" fill="#d9f2ff" font-size="10" font-family="'JetBrains Mono',monospace">"Generate a metric-depth</text>
+            <text x="105" y="56" text-anchor="middle" fill="#d9f2ff" font-size="10" font-family="'JetBrains Mono',monospace">visualization of the input…"</text>
+            <text x="105" y="74" text-anchor="middle" fill="#7eaad1" font-size="9">specifies the codec in words</text>
+          </g>
+
+          <path d="M 244 239 L 300 239" fill="none" stroke="#00e5ff" stroke-width="1.6" marker-end="url(#A-accent)"/>
+
+          <g transform="translate(308,198)">
+            <rect x="0" y="0" width="210" height="82" rx="8" fill="url(#G-teal)" stroke="#39ff88" stroke-opacity=".65"/>
+            <text x="105" y="22" text-anchor="middle" fill="#39ff88" font-size="11" font-weight="700" letter-spacing=".1em">VISION BANANA</text>
+            <text x="105" y="44" text-anchor="middle" fill="#d8ffe6" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">generate RGB</text>
+            <text x="105" y="62" text-anchor="middle" fill="#9eff9e" font-size="10">same weights, any task</text>
+            <text x="105" y="76" text-anchor="middle" fill="#9eff9e" font-size="10">prompt changes, nothing else</text>
+          </g>
+
+          <path d="M 522 239 L 578 239" fill="none" stroke="#39ff88" stroke-width="1.6" marker-end="url(#A-green)"/>
+
+          <g transform="translate(586,198)">
+            <rect x="0" y="0" width="210" height="82" rx="8" fill="url(#G-orange)" stroke="#ffb020" stroke-opacity=".65"/>
+            <text x="105" y="22" text-anchor="middle" fill="#ffb020" font-size="11" font-weight="700" letter-spacing=".1em">RGB IMAGE</text>
+            <text x="105" y="42" text-anchor="middle" fill="#ffe2b3" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">false-color visualization</text>
+            <text x="105" y="60" text-anchor="middle" fill="#d9b478" font-size="10">the generator's only output</text>
+            <text x="105" y="76" text-anchor="middle" fill="#d9b478" font-size="10">no logits, no masks, no vectors</text>
+          </g>
+
+          <path d="M 800 239 L 856 239" fill="none" stroke="#ffb020" stroke-width="1.6" marker-end="url(#A-amber)"/>
+
+          <g transform="translate(864,198)">
+            <rect x="0" y="0" width="286" height="82" rx="8" fill="url(#G-violet)" stroke="#9d7bff" stroke-opacity=".7"/>
+            <text x="143" y="22" text-anchor="middle" fill="#9d7bff" font-size="11" font-weight="700" letter-spacing=".1em">INVERT CODEC → TASK OUTPUT</text>
+            <text x="143" y="42" text-anchor="middle" fill="#e2d7ff" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">RGB → meters · mask · (x,y,z)</text>
+            <text x="143" y="60" text-anchor="middle" fill="#c7b5ff" font-size="10">deterministic · bijective</text>
+            <text x="143" y="75" text-anchor="middle" fill="#c7b5ff" font-size="10">benchmark-ready metrics</text>
+          </g>
+
+          <!-- bottom caption strip -->
+          <g transform="translate(20,302)">
+            <rect x="0" y="0" width="1140" height="22" rx="3" fill="#0a0e14" stroke="rgba(139,148,158,.15)"/>
+            <text x="16" y="15" fill="#8b949e" font-size="10" font-style="italic">No task-specific loss, no per-task head. The prompt and the codec are the entire task interface; the weights are task-agnostic.</text>
+            <text x="1124" y="15" text-anchor="end" fill="#6e7681" font-size="10">paper §2</text>
+          </g>
+        </svg>
+      </div>
+      <p class="cap">Read the top row as training (augment NBP's own mix with a small slice whose targets are RGB-encoded through the codec, jointly instruction-tune), the bottom row as inference (prompt names the codec, model generates RGB, decode recovers metric/masks). The two pink/violet cards on the right say the two things a paper like this has to demonstrate side by side: (i) perception now works, (ii) generation still works. The rest of the architecture &mdash; tokenizers, transformer, diffusion decoder &mdash; is whatever Nano Banana Pro already was. Source: paper &sect;2.</p>
+
+      <p style="margin-top:14px">Three things about this template matter more than they read. <b>First</b>, the vision-task slice is <em>tiny</em>. The paper's exact phrasing (&sect;2) is <q>we mix vision task data into Nano Banana Pro's own training mixture at a very low ratio</q> &mdash; not a number. The paper does not publish a token budget, a step count, or a checkpoint diff. The size is load-bearing for the argument ("this is instruction-tuning, not re-pretraining"), and the paper expects you to accept "very low" on the strength of the generation-preservation ablation (GenAI-Bench 53.5% / ImgEdit 47.8% head-to-head in &sect;2) rather than count tokens. I think the phrase deserves a footnote in the paper, but I cannot verify a precise ratio from the sources. <b>Second</b>, the instruction-tuning is <em>joint</em>: NBP's own data is still in the mix during tuning. This is the safety rail against catastrophic forgetting. Drop it and you have a specialist; keep it and you have a generalist. The paper treats this as obvious in NLP (instruction-tuned LLMs still mix in their own pretraining corpus) and transplants the practice wholesale. <b>Third</b>, <em>there is no benchmark train split in the mixture</em>. &sect;2 is explicit: <q>no training data from our evaluation benchmarks is included in the instruction-tuning mixture</q>. This is why "zero-shot transfer" in Table 2 is credible &mdash; it's not zero-shot in the CLIP sense, but it's honest "we never saw Cityscapes train" zero-shot. That constraint is what makes the SAM 3 comparison fair, because SAM 3 is also evaluated zero-shot-transfer on the same benchmarks (paper &sect;3.1, following the <a href="https://arxiv.org/abs/2304.02643" target="_blank" rel="noopener">Segment Anything</a> terminology).</p>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">what the paper does not publish</span>
+        <p>The method section is honest-short but the omissions compound. No base-model weights (NBP is Google-internal); no vision-task dataset names, counts, or license terms; no token-mix ratio; no training step count; no GPU/TPU-hour budget; no prompt-bank listing (Fig. 2/3/4 show prompt examples but there is no canonical set). The paper also does not ablate the codec choices &mdash; no experiment swaps the power transform for a different curve, swaps the Hilbert-cube walk for a linear interpolation, or removes the joint-mix during tuning. The claim "image generators are generalist vision learners" is empirically supported by the leaderboard tables, but every piece that would let an outside team reproduce the recipe at smaller scale is absent. Readers who want to know <em>which</em> part of the recipe is load-bearing &mdash; the base-model scale, the joint mix, or the codec design &mdash; will have to pick it apart elsewhere. I flag the codec design as the most portable part, and spend the next section on it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== THE CODEC =========================== -->
+  <section id="codec">
+    <div class="wrap">
+      <h2 class="sec">the codec <span class="desc-inline">// three task outputs, three invertible paths through RGB</span></h2>
+
+      <p>The paper has <em>one</em> equation (Eq. 1), and it is load-bearing. Surface normals inherit the RGB cube natively. Segmentation outsources its codec to the prompt. Metric depth is the hard case &mdash; unbounded positive reals on one end, a bounded three-channel cube on the other &mdash; and the paper's warping + cube-walk construction is the cleanest part of the engineering. I walk all three below in order of <em>how hard the codec was to design</em>.</p>
+
+      <h3 class="sub">3.1 &middot; surface normals &mdash; the free lunch</h3>
+      <p>A surface normal is a unit vector $(x, y, z) \in [-1, 1]^3$. An RGB pixel is a triple in $[0, 1]^3$. The map is a three-line affine: $(r, g, b) = (x + 1, y + 1, z + 1) / 2$, invert by doubling and subtracting one. The paper uses camera-space right-handed coordinates (+x right, +y up, +z toward camera) and cashes out concrete endpoints: <em>facing left</em> $(-1, 0, 0)$ is pinkish red, <em>facing up</em> $(0, 1, 0)$ is light green, <em>facing the camera</em> $(0, 0, 1)$ is light blue/purple (&sect;3.2). No curve, no cube walk, no ambiguity. The reason normals are the free-lunch task is that evolution already ran this codec &mdash; matcap shaders and the classic "rainbow normal map" visualization in graphics are the same trick &mdash; and any image generator trained on 3D-rendered tutorial content has seen enough examples to render the map confidently.</p>
+
+      <h3 class="sub">3.2 &middot; segmentation &mdash; the codec is the prompt</h3>
+      <p>Semantic and referring-expression segmentation don't need a universal codec; they need the model to follow one <em>specified at inference time</em>. The prompt carries the dictionary. Paper Fig. 2 shows the full flexibility: natural language (<code>{"cat": "red", "lock": "pink", "exit sign": "light purple"}</code>), JSON with RGB tuples (<code>{"cat ears": &lt;255, 165, 0&gt;}</code>), hex notation (<code>#80C000</code>), or per-pixel-class prose. The evaluator does the only mechanical step: cluster the generated pixels by nearest prompt-specified color. The model's job is to <em>render the dictionary</em>. <em>Instance</em> segmentation flips the problem: the number of instances isn't known ahead of time, so the prompt can't assign colors directly. The paper's workaround (&sect;3.1): <strong>one-class-per-inference</strong>, with prompts like <q>Generate an instance segmentation visualization of this image. Each piece of garlic is colored differently</q> (Fig. 3), and a per-pixel color-clustering decoder on the output. It is a clever sidestep &mdash; each pixel cluster becomes one instance &mdash; but it is not free: inference cost scales linearly in the number of classes, the model has to decide what "differently" means, and the paper lands slightly behind DINO-X on SA-Co/Gold (0.540 vs 0.552 pmF<sub>1</sub>, Table 2b). The codec being specified <em>at inference</em> is what makes the loss on instance segmentation the one real crack in the leaderboard: when the task can't hand-write the dictionary, the generator has to pick one, and it doesn't pick optimally.</p>
+
+      <h3 class="sub">3.3 &middot; metric depth &mdash; the bijection the paper earned</h3>
+      <p>Metric depth is the hard one, and it is the codec the paper actually has to design. The target is an unbounded positive real, in meters; the RGB cube is bounded. Three constraints the map has to satisfy at once: (i) carry $[0, \infty)$ into $[0, 1)$, (ii) preserve <em>more</em> resolution near the camera than at the horizon &mdash; because a 1 cm error on a graspable object matters more than a 1 cm error at 50 m, a point the paper grounds in robotics-utility language (&sect;3.2) &mdash; and (iii) be strictly invertible, so $\delta_1$ and AbsRel can be read off the decoded meters directly with no per-scene alignment. Constraint (iii) is the one that separates VB from <a href="https://arxiv.org/abs/2312.02145" target="_blank" rel="noopener">Marigold (Ke et al., CVPR 2024)</a>: Marigold outputs <em>affine-invariant</em> depth, a scalar field that needs scale-and-shift alignment against ground truth before $\delta_1$ is computable. That alignment is what lets Marigold work at all &mdash; diffusion from Stable Diffusion 2 doesn't naturally carry absolute scale &mdash; but it also means Marigold is incomparable to metric specialists without a per-scene calibration step. Vision Banana is benchmarked directly in meters; the power-transform + cube-walk exists to make that possible.</p>
+
+      <p>The paper's construction (&sect;3.2) is two composable invertible steps: a <strong>power transform</strong> $f(d, \lambda, c)$ from Barron's <a href="https://arxiv.org/abs/2502.10647" target="_blank" rel="noopener"><em>A Power Transform</em></a> (arXiv:2502.10647, Feb 2025) warps unbounded depth to the unit interval; a <strong>Gray-code Hamiltonian path through the RGB cube's 8 corners</strong> interpolates the warped scalar into color. The paper equation for the warp (Eq. 1, constrained to $\lambda < -1$):</p>
+
+      <div class="formula">
+        $$f(d, \lambda, c) \;=\; 1 - \left(1 - \frac{d}{\lambda c}\right)^{\lambda + 1}, \qquad \lambda = -3, \quad c = \tfrac{10}{3}, \quad \lambda c = -10 \qquad \text{(paper Eq. 1)}$$
+      </div>
+
+      <p>Two remarks on the warp that the paper leaves implicit. <b>First</b>, Barron's paper is not a depth-estimation paper &mdash; it is a unifying-framework paper showing one parametric family covers loss functions, kernels, bump functions, and activations under various $\lambda$. The constraint $\lambda < -1$ picks out the monotonic saturating branch of the family (the branch that behaves like a soft-asymptote to 1), and different $\lambda$ values in this branch give different tail thicknesses. VB picks $\lambda = -3$ and $c = 10/3$ (so $\lambda c = -10$, a nice round scale constant) because the resulting shape puts 75% of the output range into the first 10&nbsp;m of depth, which matches the robotics-utility argument. The choice is principled, not ad-hoc; other $\lambda$ values would re-weight near-vs-far resolution differently. <b>Second</b>, I plugged the constants into the formula to sanity-check the shape: $f(0.5\,\text{m}) = 0.093,\; f(1) = 0.174,\; f(2) = 0.306,\; f(5) = 0.556,\; f(10) = 0.750,\; f(20) = 0.889,\; f(50) = 0.972,\; f(100) = 0.992,\; f(500) = 0.9996$ (all from my arithmetic on Eq. 1). Resolution bunches near the camera and saturates smoothly at distance &mdash; <em>exactly</em> the rate schedule the paper's discussion in &sect;3.2 describes.</p>
+
+      <div class="fig-wrap accent-violet">
+        <div class="fig-bar">
+          <span class="fig-bar-title">THE DEPTH CODEC &middot; POWER TRANSFORM → HILBERT WALK OF THE RGB CUBE</span>
+          <span class="fig-bar-id">fig: codec/depth</span>
+        </div>
+        <svg viewBox="0 0 1180 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The depth codec in two stages: stage one is the power-transform curve that maps unbounded metric depth in meters to a normalized scalar in the unit interval, showing that 10 meters maps to 0.75 and 50 meters maps to 0.97; stage two is a piecewise-linear walk along seven edges of the RGB cube from black through red, yellow, green, cyan, blue, violet to white, using the normalized scalar to interpolate along that path and producing the false-color visualization.">
+          <rect x="0" y="0" width="1180" height="400" fill="url(#P-grid)" opacity=".4"/>
+
+          <!-- STAGE 1: power transform curve -->
+          <g transform="translate(40,40)">
+            <text x="0" y="0" fill="#9d7bff" font-size="11" font-weight="700" letter-spacing=".12em">[01] POWER TRANSFORM &middot; d (meters) → f ∈ [0, 1)</text>
+            <rect x="0" y="18" width="380" height="262" rx="6" fill="rgba(10,14,20,.7)" stroke="rgba(157,123,255,.4)"/>
+            <!-- axes -->
+            <line x1="40" y1="250" x2="360" y2="250" stroke="#6e7681" stroke-width=".7"/>
+            <line x1="40" y1="40" x2="40" y2="250" stroke="#6e7681" stroke-width=".7"/>
+            <!-- tick labels x -->
+            <text x="40"  y="266" text-anchor="middle" fill="#8b949e" font-size="9">0</text>
+            <text x="104" y="266" text-anchor="middle" fill="#8b949e" font-size="9">10</text>
+            <text x="168" y="266" text-anchor="middle" fill="#8b949e" font-size="9">20</text>
+            <text x="232" y="266" text-anchor="middle" fill="#8b949e" font-size="9">50</text>
+            <text x="296" y="266" text-anchor="middle" fill="#8b949e" font-size="9">100</text>
+            <text x="352" y="266" text-anchor="middle" fill="#8b949e" font-size="9">500m</text>
+            <!-- tick labels y -->
+            <text x="34" y="252" text-anchor="end" fill="#8b949e" font-size="9">0.0</text>
+            <text x="34" y="200" text-anchor="end" fill="#8b949e" font-size="9">0.25</text>
+            <text x="34" y="147" text-anchor="end" fill="#8b949e" font-size="9">0.5</text>
+            <text x="34" y="95"  text-anchor="end" fill="#8b949e" font-size="9">0.75</text>
+            <text x="34" y="44"  text-anchor="end" fill="#8b949e" font-size="9">1.0</text>
+            <!-- curve: f(d) with x non-linear placement (pseudo-log) -->
+            <!-- precomputed (d, f): (0.5,0.093) (1,0.174) (2,0.306) (5,0.556) (10,0.75) (20,0.889) (50,0.972) (100,0.992) (500,0.9996) -->
+            <!-- map d → x screen: segments: 0→40, 10→104 (linear 0..10), 10→104, 20→168 (linear), 20→168, 50→232, 50→232, 100→296, 100→296, 500→352 -->
+            <path d="M 40,250 L 43,232 L 46,214 L 52,187 L 72,134 L 104,92 L 168,61 L 232,48 L 296,44 L 352,42"
+                  fill="none" stroke="#9d7bff" stroke-width="2" filter="url(#F-glow)"/>
+            <!-- markers -->
+            <circle cx="104" cy="92"  r="4" fill="#9d7bff"/><text x="114" y="88"  fill="#e2d7ff" font-size="10">10m → 0.75</text>
+            <circle cx="168" cy="61"  r="4" fill="#ff3fa4"/><text x="178" y="58"  fill="#ffd7e6" font-size="10">20m → 0.889</text>
+            <circle cx="232" cy="48"  r="4" fill="#39ff88"/><text x="242" y="44"  fill="#d8ffe6" font-size="10">50m → 0.972</text>
+            <!-- legend — placed inside the panel, below the title, above the curve (curve's top = y=42) -->
+            <text x="196" y="34" text-anchor="middle" fill="#8b949e" font-size="10" font-style="italic">bunches resolution near the camera · saturates smoothly at distance</text>
+          </g>
+
+          <!-- arrow to stage 2 -->
+          <path d="M 444 170 L 504 170" fill="none" stroke="#9d7bff" stroke-width="1.8" marker-end="url(#A-violet)"/>
+          <text x="474" y="162" text-anchor="middle" fill="#9d7bff" font-size="10" font-weight="700" letter-spacing=".1em">STAGE 2</text>
+
+          <!-- STAGE 2: cube walk -->
+          <g transform="translate(518,40)">
+            <text x="0" y="0" fill="#39ff88" font-size="11" font-weight="700" letter-spacing=".12em">[02] 3D HILBERT WALK &middot; f → RGB(f) along seven edges of the color cube</text>
+            <rect x="0" y="18" width="620" height="262" rx="6" fill="rgba(10,14,20,.7)" stroke="rgba(57,255,136,.4)"/>
+
+            <!-- cube schematic -->
+            <g transform="translate(30,50)">
+              <!-- cube edges, desaturated grey -->
+              <g stroke="#3a4566" stroke-width=".8" fill="none">
+                <path d="M 20 150 L 140 150 L 220 110 L 100 110 Z"/>
+                <path d="M 20 30  L 140 30  L 220 -10 L 100 -10 Z"/>
+                <path d="M 20 150 L 20 30"/>
+                <path d="M 140 150 L 140 30"/>
+                <path d="M 220 110 L 220 -10"/>
+                <path d="M 100 110 L 100 -10"/>
+              </g>
+              <!-- corner labels -->
+              <circle cx="20" cy="150" r="5" fill="#0a0e14" stroke="#e6edf3" stroke-width="1"/>
+              <text x="10" y="168" fill="#c9d1d9" font-size="9" text-anchor="end">K (0,0,0)</text>
+              <circle cx="140" cy="150" r="5" fill="#ff3030"/>
+              <text x="148" y="168" fill="#ff9090" font-size="9">R (1,0,0)</text>
+              <circle cx="20" cy="30" r="5" fill="#3a3cff"/>
+              <text x="8" y="28" fill="#9ea0ff" font-size="9" text-anchor="end">B (0,0,1)</text>
+              <circle cx="140" cy="30" r="5" fill="#9d7bff"/>
+              <text x="148" y="28" fill="#c7b5ff" font-size="9">V (1,0,1)</text>
+              <circle cx="220" cy="110" r="5" fill="#ffe000"/>
+              <text x="228" y="114" fill="#ffe890" font-size="9">Y (1,1,0)</text>
+              <circle cx="100" cy="110" r="5" fill="#39ff88"/>
+              <text x="66" y="124" fill="#9eff9e" font-size="9">G (0,1,0)</text>
+              <circle cx="220" cy="-10" r="5" fill="#f0f0ff" stroke="#8b949e" stroke-width=".6"/>
+              <text x="228" y="-6" fill="#e6edf3" font-size="9">W (1,1,1)</text>
+              <circle cx="100" cy="-10" r="5" fill="#00e5ff"/>
+              <text x="66" y="-14" fill="#a5ecff" font-size="9">C (0,1,1)</text>
+
+              <!-- the walk path K-R-Y-G-C-B-V-W (7 edges) -->
+              <g fill="none" stroke-width="4" stroke-linecap="round" stroke-opacity=".92">
+                <path d="M 20 150 L 140 150" stroke="url(#G-cube-k-r)"/>
+                <path d="M 140 150 L 220 110" stroke="url(#G-cube-r-y)"/>
+                <path d="M 220 110 L 100 110" stroke="url(#G-cube-y-g)"/>
+                <path d="M 100 110 L 100 -10" stroke="url(#G-cube-g-c)"/>
+                <path d="M 100 -10 L 20 30"   stroke="url(#G-cube-c-b)"/>
+                <path d="M 20 30 L 140 30"    stroke="url(#G-cube-b-v)"/>
+                <path d="M 140 30 L 220 -10"  stroke="url(#G-cube-v-w)"/>
+              </g>
+              <!-- walk label -->
+              <text x="125" y="198" text-anchor="middle" fill="#e6edf3" font-size="10" font-weight="700" letter-spacing=".08em">K → R → Y → G → C → B → V → W</text>
+              <text x="125" y="214" text-anchor="middle" fill="#8b949e" font-size="9" font-style="italic">Gray-code Hamiltonian path · 7 edges · each step flips one RGB bit</text>
+            </g>
+
+            <!-- spectrum bar — bar width 210 + label col 82 fits inside the Stage 2 panel (width 620) -->
+            <g transform="translate(280,60)">
+              <text x="0" y="-10" fill="#8b949e" font-size="10" font-weight="700" letter-spacing=".1em">F → COLOR (table)</text>
+              <g font-family="'JetBrains Mono',monospace" font-size="9">
+                <rect x="0" y="0"   width="210" height="14" rx="2" fill="url(#G-cube-k-r)"/>
+                <text x="218" y="10" fill="#ff9090">0.00 · near</text>
+                <rect x="0" y="18"  width="210" height="14" rx="2" fill="url(#G-cube-r-y)"/>
+                <text x="218" y="28" fill="#ffe890">0.14 · ≈2m</text>
+                <rect x="0" y="36"  width="210" height="14" rx="2" fill="url(#G-cube-y-g)"/>
+                <text x="218" y="46" fill="#9eff9e">0.29 · ≈5m</text>
+                <rect x="0" y="54"  width="210" height="14" rx="2" fill="url(#G-cube-g-c)"/>
+                <text x="218" y="64" fill="#a5ecff">0.43 · ≈8m</text>
+                <rect x="0" y="72"  width="210" height="14" rx="2" fill="url(#G-cube-c-b)"/>
+                <text x="218" y="82" fill="#9ea0ff">0.57 · ≈14m</text>
+                <rect x="0" y="90"  width="210" height="14" rx="2" fill="url(#G-cube-b-v)"/>
+                <text x="218" y="100" fill="#c7b5ff">0.71 · ≈25m</text>
+                <rect x="0" y="108" width="210" height="14" rx="2" fill="url(#G-cube-v-w)"/>
+                <text x="218" y="118" fill="#e6edf3">1.00 · far</text>
+              </g>
+              <text x="0" y="140" fill="#8b949e" font-size="9" font-style="italic">bands follow the power-transform curve, not uniform meters</text>
+            </g>
+          </g>
+
+          <!-- bottom strip: inverse path -->
+          <g transform="translate(20,320)">
+            <rect x="0" y="0" width="1140" height="56" rx="6" fill="#0a0e14" stroke="rgba(57,255,136,.3)"/>
+            <text x="18" y="18" fill="#39ff88" font-size="10" font-weight="700" letter-spacing=".14em">◆ INVERSE (inference): project RGB → nearest edge → invert linear interp → invert power transform → meters</text>
+            <text x="18" y="36" fill="#c9d1d9" font-size="10" font-family="'JetBrains Mono',monospace">d(RGB) = f⁻¹( invert_lerp( project_to_nearest_edge(RGB) ) )   with   f⁻¹(u) = λc · ( 1 − (1 − u)^(1/(λ+1)) )</text>
+            <text x="18" y="50" fill="#6e7681" font-size="9" font-style="italic">both steps are strictly invertible → the map is a bijection on [0,∞) × [0,1]³ (paper §3.2)</text>
+          </g>
+        </svg>
+      </div>
+      <p class="cap">Left panel: the power transform turns unbounded meters into $[0, 1)$ with a non-linear spend of output range &mdash; the first 10 m get 75% of it, the next 90 m get 24%, and the horizon gets the last sliver. Right panel: the cube walk visits all 8 corners in the order K-R-Y-G-C-B-V-W; each step traverses one edge and flips exactly one of the three RGB bits, so the path is a Gray-code Hamiltonian on the cube's vertex graph. The paper calls this "similarly to the first iteration of a 3D Hilbert curve" (&sect;3.2); the precise property being imported from Hilbert is <em>locality</em> &mdash; consecutive $f$-values map to adjacent cube corners &mdash; which any Gray-code Hamiltonian shares. The bottom strip is the inverse: project the generated RGB to the nearest edge of the walk, invert the linear interpolation on that edge, invert the power transform with $f^{-1}(u) = \lambda c \cdot (1 - (1-u)^{1/(\lambda+1)})$. No information is lost on paper. In practice, the generator's pixel noise limits which edge is "nearest", so the effective precision tracks the generator's color fidelity, not the codec's theoretical resolution. Source: paper &sect;3.2, Fig. 5, Eq. 1.</p>
+
+      <p style="margin-top:14px">Three pieces of the codec deserve a second look. <b>One</b>, the <em>walk</em> &mdash; I verified that K→R→Y→G→C→B→V→W is a valid Gray-code Hamiltonian path (each of the 7 steps flips exactly one RGB channel, the 8 corners are visited once, start=black and end=white). This is a weaker statement than "first-iteration 3D Hilbert" in the canonical Butz/Lawder sense, which would start K→B→C→G→Y→W→V→R, but it is in the same family and satisfies the locality property the paper actually needs. Nothing in the bijection breaks if you re-orient the walk; the choice of this particular rainbow sequence is mostly so the prompt "<code>rainbow (black-red-yellow-green-cyan-blue-violet-white)</code>" (see the project page demos) can specify it in natural language. <b>Two</b>, training is augmented with <em>alternative color maps</em> &mdash; Plasma, Inferno, Viridis, grayscale (&sect;3.2) &mdash; so the generator learns to treat the default walk as <em>one of several</em> depth colormaps rather than as a fixed mapping. That is what lets prompts name the colormap at inference without the architecture knowing about it. <b>Three</b>, training targets are produced by <em>forward-encoding ground-truth depths into RGB</em> and then supervising with the generator's ordinary image-generation loss. No new loss function, no task-specific head, no regression objective. The loss is <em>the same pixel-space loss NBP already used</em>. After the codec is applied, perception training literally <em>is</em> image generation training; the only new thing is what the ground-truth images look like.</p>
+
+      <div class="callout" data-variant="ok">
+        <span class="t">why this codec is portable</span>
+        <p>The Hilbert-walk-plus-power-transform construction is reusable. Any dense scalar field with heavy-tailed support &mdash; optical flow magnitude, disparity, time-to-contact, semantic-embedding norms &mdash; can be pushed through the same pattern: (i) pick a warp from the task support into $[0, 1)$ that bunches resolution where errors matter, (ii) pick a piecewise-linear path through the color cube whose length matches the warped quantile distribution, (iii) train a generator on forward-encoded RGB and evaluate by inversion. The paper doesn't demonstrate this claim beyond depth, but the construction in Eq. 1 is obviously not Nano-Banana-specific. This is the part of the paper I expect to see cited by independent teams with weaker base models and looser benchmarks within months.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== 2D =========================== -->
+  <section id="two-d">
+    <div class="wrap">
+      <h2 class="sec">2D &mdash; segmentation <span class="desc-inline">// beats SAM 3 on three of four, loses on SA-Co/Gold</span></h2>
+
+      <p>The 2D story (paper &sect;3.1, Tab. 2) is most of the headline. The comparisons are with the explicitly zero-shot-transfer setting, following the <a href="https://arxiv.org/abs/2304.02643" target="_blank" rel="noopener">Segment Anything</a> usage: no training on the benchmark's own train split. The paper is scrupulous about marking methods that <em>are</em> in-domain (e.g. SegMan, LISA, HyperSeg) in gray, so the comparison isn't juiced. Here is the leaderboard compressed to one table &mdash; numbers verbatim from Tab. 2a-d.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Task &middot; benchmark</th>
+              <th class="num">Vision Banana</th>
+              <th class="num">Best zero-shot baseline</th>
+              <th class="num">&Delta;</th>
+              <th>Read</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Semantic seg. &middot; Cityscapes val (mIoU &uarr;)</td>
+              <td class="num"><b class="best">0.699</b></td>
+              <td class="num">0.652 (SAM 3)</td>
+              <td class="num">+0.047</td>
+              <td>Narrows the gap to closed-set SegMan (0.842, in-domain) by ~15 pts. The cleanest open-vocabulary win.</td>
+            </tr>
+            <tr>
+              <td>Instance seg. &middot; SA-Co/Gold (pmF<sub>1</sub> &uarr;, 500 queries*)</td>
+              <td class="num">0.540*</td>
+              <td class="num"><b class="best">0.552</b> (DINO-X)</td>
+              <td class="num" style="color:var(--amber)">&minus;0.012</td>
+              <td>The only row where VB doesn't lead. The one-class-per-inference codec is load-bearing here &mdash; see the amber note below.</td>
+            </tr>
+            <tr>
+              <td>Referring seg. &middot; RefCOCOg UMD val (cIoU &uarr;)</td>
+              <td class="num"><b class="best">0.738</b></td>
+              <td class="num">0.734 (SAM 3 Agent)</td>
+              <td class="num">+0.004</td>
+              <td>A hair ahead of the multi-model SAM 3 + Gemini 2.5 Pro pipeline; still below in-domain HyperSeg (0.794).</td>
+            </tr>
+            <tr>
+              <td>Reasoning seg. &middot; ReasonSeg val (gIoU &uarr;, + Gemini 2.5 Pro)</td>
+              <td class="num"><b class="best">0.793</b></td>
+              <td class="num">0.770 (SAM 3 Agent + G2.5P)</td>
+              <td class="num">+0.023</td>
+              <td>VB + G2.5P <em>also</em> beats in-domain X-SAM (0.566) and LISA (0.650). The largest zero-shot headroom of the four rows.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cap">*SA-Co/Gold numbers for VB are on a 500-query random subset to save compute (paper footnote Tab. 2b); DINO-X is evaluated on the full set. Arithmetic: +0.047, &minus;0.012, +0.004, +0.023 match the published VB&minus;baseline differences, re-computed from Tab. 2. "SAM 3 Agent" is the SAM 3 + Gemini 2.5 Pro pipeline from <a href="https://arxiv.org/abs/2511.16719" target="_blank" rel="noopener">Carion et al. 2025</a>. "In-domain" rows (SegMan, HyperSeg, X-SAM, LISA) are <em>not</em> zero-shot; I list them as context, not as beaten baselines.</p>
+
+      <p style="margin-top:14px"><b>The three things to notice, in order of importance.</b></p>
+
+      <div class="grid c2">
+        <div class="card">
+          <h4>[i] reasoning segmentation is the widest win</h4>
+          <p>ReasonSeg isn't a mask-boundary benchmark; it's a <em>reasoning</em> benchmark, where the query is free-form text like <q>the area that corresponds to the man in pink t shirt</q> and the evaluator checks the returned mask (Tab. 2d, examples in Fig. 4). VB + Gemini 2.5 Pro takes gIoU to 0.793, the widest absolute lead in the paper. This is the row where I'd bet the paper's "image-generator-as-foundation" thesis is strongest &mdash; the task reduces to "understand what the prompt refers to, draw a mask of that region" and the mask-drawing part is the generator's home turf. A specialist that treats segmentation as pixel-logit classification has no path to "chef's names in Chinese and English" (Fig. 4d); the generator already knows what text looks like.</p>
+        </div>
+        <div class="card">
+          <h4>[ii] Cityscapes is the cleanest comparison</h4>
+          <p>Cityscapes has 19 fixed classes; the codec is straight color-dictionary (&sect;3.1); no MLLM in the loop; no reasoning confounder. VB 0.699 vs SAM 3 0.652 is the paper's purest methodology-vs-methodology comparison (paper phrasing, &sect;3.1: <q>surpasses SAM 3 by 4.7 points in mIoU and is the best open vocabulary model</q>). The comparison to closed-set SegMan at 0.842 tells you there's still headroom &mdash; generation-side errors on boundary pixels add up &mdash; but the gap to in-domain is ~14 mIoU points, which was ~19 pts for SAM 3.</p>
+        </div>
+        <div class="card" style="border-left-color:var(--amber)">
+          <h4>[iii] SA-Co/Gold instance segmentation is the one honest loss</h4>
+          <p>This is the row the paper cannot dodge. DINO-X at 0.552 stays ahead of VB's 0.540 (on a 500-sample subset, the paper notes it's for compute). The story: SA-Co/Gold has many instances per image, often of unbounded count per class. The one-class-per-inference codec means VB has to (i) guess the class list, (ii) decide how many distinct instance-colors to render per class, (iii) render them disjointly. Any slip on (ii) compounds through the cluster-by-color decoder. SAM 3 and DINO-X emit instance masks directly and don't pay this cost. The paper is honest about this (&sect;3.1: <q>Vision Banana still lags behind in instance segmentation on SA-Co/Gold, highlighting some challenges in this task</q>). What I want next, and the paper doesn't supply, is an ablation on the codec &mdash; say, a two-pass codec where pass 1 counts instances and pass 2 assigns colors. The current one-pass recipe is the weak spot.</p>
+        </div>
+        <div class="card">
+          <h4>[iv] cross-task transfer is real</h4>
+          <p>The observation I find cleanest is the throwaway one at the end of &sect;3.1: <q>Vision Banana also demonstrates a similar mastery of referring expressions on semantic and instance segmentation, despite not being explicitly trained to condition these specific tasks on free-form text queries.</q> In Fig. 2b right, the model correctly segments <q>patterns on the wall</q> in a <em>semantic segmentation</em> call. In Fig. 3b right it distinguishes <q>crescent-shaped</q> croissants in an <em>instance segmentation</em> call. The referring capability learned on RefCOCOg transfers to segmentation tasks it wasn't explicitly trained to condition on text-queries for. That is a cross-task transfer story inside the paper, not across papers &mdash; and it is the closest thing to evidence that the codec approach inherits LLM-style task flexibility, not just task-level SOTA.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== 3D =========================== -->
+  <section id="three-d">
+    <div class="wrap">
+      <h2 class="sec">3D &mdash; depth and normals <span class="desc-inline">// wins where the codec bet pays; loses where specialists overtrain</span></h2>
+
+      <p>The 3D story (paper &sect;3.2, Tables 3 and 4) is the one I got wrong on a first read and the one most worth slowing down on. Table 3 reports metric depth on six benchmarks against five specialists. To read it, you need the column-mapping correct &mdash; some cells are empty because a given specialist didn't evaluate on a given dataset, and if you line up the wrong numbers you'll report the wrong "best specialist" in three of the six rows. I did, in my first draft; the table below is the re-mapped version, which I verified against the paper's three footnote sub-averages (DLM-7B's 0.855 on its 4-dataset subset, DA3's 0.918 on its 4-dataset subset, VB's 0.929 on DA3's subset &mdash; all three reconstruct exactly from the cells below, confirming the column assignment).</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Dataset</th>
+              <th class="num">DLM-7B</th>
+              <th class="num">DA&nbsp;3</th>
+              <th class="num">D&thinsp;Pro</th>
+              <th class="num">UniK3D</th>
+              <th class="num">MoGe-2</th>
+              <th class="num">Vision Banana</th>
+              <th>row best &middot; VB's margin</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>NYU (Silberman&nbsp;2012) &delta;<sub>1</sub>↑</td>
+              <td class="num">0.915</td>
+              <td class="num">0.963</td>
+              <td class="num">0.961</td>
+              <td class="num"><b class="best">0.965</b></td>
+              <td class="num">0.961</td>
+              <td class="num">0.948</td>
+              <td>UniK3D leads; VB loses by <b>0.017</b>. <em>Four</em> specialists beat VB here &mdash; the most-overfit indoor benchmark in monocular depth.</td>
+            </tr>
+            <tr>
+              <td>iBims-1 (Koch&nbsp;2018) &delta;<sub>1</sub>↑</td>
+              <td class="num">0.920</td>
+              <td class="num">0.913</td>
+              <td class="num">0.919</td>
+              <td class="num">0.830</td>
+              <td class="num">&mdash;</td>
+              <td class="num"><b class="best">0.934</b></td>
+              <td><b>VB wins</b> by 0.014 over DLM-7B.</td>
+            </tr>
+            <tr>
+              <td>ETH3D (Schops&nbsp;2019) &delta;<sub>1</sub>↑</td>
+              <td class="num">0.718</td>
+              <td class="num">0.917</td>
+              <td class="num">0.415</td>
+              <td class="num">0.687</td>
+              <td class="num">0.908</td>
+              <td class="num"><b class="best">0.935</b></td>
+              <td><b>VB wins</b> by 0.018 over DA&nbsp;3.</td>
+            </tr>
+            <tr>
+              <td>DIODE-Indoor (Vasiljevic&nbsp;2019) &delta;<sub>1</sub>↑</td>
+              <td class="num">&mdash;</td>
+              <td class="num">0.838</td>
+              <td class="num">0.671</td>
+              <td class="num">0.713</td>
+              <td class="num">0.664</td>
+              <td class="num"><b class="best">0.917</b></td>
+              <td><b>VB wins by 0.079</b> over DA&nbsp;3 &mdash; the single widest margin in the paper.</td>
+            </tr>
+            <tr>
+              <td>KITTI (Uhrig&nbsp;2017) &delta;<sub>1</sub>↑</td>
+              <td class="num">&mdash;</td>
+              <td class="num"><b class="best">0.953</b></td>
+              <td class="num">0.843&ddagger;</td>
+              <td class="num">0.812</td>
+              <td class="num">0.629</td>
+              <td class="num">0.915</td>
+              <td>DA&nbsp;3 leads; VB loses by <b>0.038</b>.</td>
+            </tr>
+            <tr>
+              <td>nuScenes (Caesar&nbsp;2020) &delta;<sub>1</sub>↑</td>
+              <td class="num">0.865&dagger;</td>
+              <td class="num">0.491</td>
+              <td class="num"><b class="best">0.840</b></td>
+              <td class="num">0.820</td>
+              <td class="num">&mdash;</td>
+              <td class="num">0.643</td>
+              <td>D&thinsp;Pro / UniK3D lead; VB loses to D&thinsp;Pro by 0.197 <em>but</em> <b>beats DA&nbsp;3 by 0.152</b> &mdash; DA&nbsp;3 collapses on driving scenes.</td>
+            </tr>
+            <tr style="background:rgba(57,255,136,.04)">
+              <td><em>4-dataset avg</em> (NYU + ETH3D + DIODE + KITTI, DA&nbsp;3's eval set)</td>
+              <td class="num">&mdash;</td>
+              <td class="num">0.918</td>
+              <td class="num">&mdash;</td>
+              <td class="num">&mdash;</td>
+              <td class="num">&mdash;</td>
+              <td class="num"><b class="best">0.929</b></td>
+              <td>+0.011 absolute. Paper's main depth headline. My recomputation: $(0.948+0.935+0.917+0.915)/4 = 0.9288$. ✓</td>
+            </tr>
+            <tr style="background:rgba(57,255,136,.04)">
+              <td><em>6-dataset avg</em> (all benchmarks)</td>
+              <td class="num">&mdash;</td>
+              <td class="num">&mdash;</td>
+              <td class="num">0.715*</td>
+              <td class="num">0.823*</td>
+              <td class="num">0.802*</td>
+              <td class="num"><b class="best">0.882</b></td>
+              <td>Project-page headline. My VB recomputation: $(0.948+0.934+0.935+0.917+0.915+0.643)/6 = 0.882$. ✓</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cap">Entries as published in paper Tab. 3; "&mdash;" = not evaluated by that specialist on that dataset (the paper's Tab. 3 footnote lists each specialist's evaluation set). &dagger; DLM-7B is trained on nuScenes, so its 0.865 there is <em>not</em> a zero-shot number and is excluded from row-leader claims. &ddagger; D&thinsp;Pro's 0.843 on KITTI is re-reported by Depth Anything 3 (Lin et al. 2025); the original D&thinsp;Pro paper reported a different number on a different split. * 6-dataset averages for specialists come from the project page (<a href="https://vision-banana.github.io/" target="_blank" rel="noopener">vision-banana.github.io</a>) and don't exactly match row-sum divisions from Tab. 3 because each specialist's chart entry uses that specialist's own paper-reported numbers on overlapping subsets; I flag this rather than reconcile it. Vision Banana uses <em>neither</em> intrinsics nor extrinsics in training or inference (&sect;3.2, and Tab. 3 "Camera Intrinsics" row, checked against DLM-7B-train, DA&nbsp;3-train, D&thinsp;Pro-train/inference, UniK3D-train, MoGe-2-train/inference, VB-neither).</p>
+
+      <div class="grid c2" style="margin-top:18px">
+        <div class="card accent-green">
+          <h4>[pattern] VB wins where intrinsics don't help</h4>
+          <p>Read the table by who the top row is, not by row average. VB wins three datasets outright (iBims-1, ETH3D, DIODE-Indoor); loses NYU to multiple specialists by tiny margins (0.017 to UniK3D); loses KITTI to DA&nbsp;3 (0.038); loses nuScenes to D&thinsp;Pro (0.197). In every row VB loses, the row leader is a specialist that uses camera intrinsics at training or inference or both (DA&nbsp;3 trains with intrinsics; D&thinsp;Pro uses them at both; UniK3D and MoGe-2 use them at inference). In every row VB wins, the row leader <em>without</em> intrinsics-aware specialists is far below VB. The mechanism is clean: intrinsics give a specialist the camera's focal length and principal point as extra conditioning, which collapses a geometric ambiguity monocular depth has to resolve otherwise; VB resolves it with <em>world-knowledge priors</em> about object sizes instead. When intrinsics are the strong prior (highway scenes, indoor-benchmark-overfit NYU), specialists win by small margins. When intrinsics are unhelpful (unusual indoor layouts, sparse outdoor scans), VB's generator priors carry further.</p>
+        </div>
+        <div class="card accent-cyan">
+          <h4>[observation] nuScenes: DA&nbsp;3 collapses, VB holds</h4>
+          <p>The nuScenes row is the most interesting single data point in Tab. 3, and the one I misread first time. Depth Anything 3 &mdash; the best-on-average specialist &mdash; scores 0.491, worse than everything except Depth Pro's 0.812-on-KITTI outlier. Why? nuScenes is a driving benchmark with 6 cameras at very different heights and angles to any typical web photo. DA&nbsp;3's intrinsics-conditioned training distribution does not cover this, and its $\delta_1$ halves. VB at 0.643 is nowhere near the intrinsics-using champions (D&thinsp;Pro 0.840, UniK3D 0.820) but it <em>beats</em> DA&nbsp;3 by 0.152 without using intrinsics. This is evidence for the codec-theoretic argument &mdash; the generator's priors degrade more gracefully across distribution shift than intrinsics-conditioned specialists do &mdash; and it is the row where my first-draft reading went wrong, because I'd mapped DA&nbsp;3 to the 0.843 cell and called it a bigger loss than it is.</p>
+        </div>
+        <div class="card">
+          <h4>[receipt] the Kinkaku-Ji vibe test</h4>
+          <p>Fig. 7 is the clearest single number for VB's metric calibration outside academic benchmarks. An author took a consumer-phone photo near Kinkaku-Ji, prompted VB for a depth map, decoded the green-marked pixel, and got 13.71 m. Google Maps said 12.87 m. Absolute relative error: $|13.71 - 12.87| / 12.87 = 0.0653$, i.e. 6.5% (my arithmetic; matches the paper's quoted 0.065). A generator that has seen no Kinkaku-Ji, no camera intrinsics, no parallax cues, landing 6.5% relative on a point measurement through a consumer lens is the sort of spot-check that is more convincing than any academic row. The caveat is that single-point checks can be cherry-picked; the iBims-1 / DIODE-Indoor table rows are the statistical form of the same claim.</p>
+        </div>
+        <div class="card accent-amber">
+          <h4>[caveat] sim-only training claim I could not verify</h4>
+          <p>Paper &sect;3.2 asserts <q>Our model is trained entirely on synthetic depth data created from simulation engines &mdash; we use zero real-world depth data</q>. If true, VB's 0.948 on NYU, 0.917 on DIODE-Indoor, and 0.643 on nuScenes are <em>all</em> zero-shot transfers from simulation to real, with no real-world depth supervision ever. That is a much stronger claim than the paper foregrounds, and the source data (simulation engines) is not named. I flag the 0.929 headline as "paper-reported, sim-only training claim unverified, training data not publicly named". If an independent team replicates the codec on an open generator and can't reach similar numbers with real depth data, the sim-only claim is where the surprise lives.</p>
+        </div>
+      </div>
+
+      <h3 class="sub">Surface normals &mdash; two averages to distinguish</h3>
+      <p>Table 4 reports surface-normal estimation on four benchmarks (NYUv2, DIODE-indoor, ScanNet indoor, Virtual KITTI 2 outdoor). The paper gives <em>two</em> summary numbers and they matter for how you quote the result:</p>
+
+      <ul>
+        <li>Tab. <strong>1's</strong> "Surface normal estimation: average of 4 datasets" &mdash; VB <strong>18.928&deg;</strong> vs Lotus-2 <strong>19.642&deg;</strong> (mean angular error, lower is better), a <strong>0.714&deg;</strong> improvement. <em>My arithmetic</em>: $(17.778 + 13.818 + 15.052 + 29.063)/4 = 18.928$ for VB; $(16.9 + 18.575 + 14.2 + 28.894)/4 = 19.642$ for Lotus-2. ✓</li>
+        <li>Tab. <strong>4's</strong> "Average" column = the <em>3 indoor</em> datasets only (excludes VKitti) &mdash; VB <strong>15.549&deg;</strong> vs Lotus-2 <strong>16.558&deg;</strong>, a <strong>1.009&deg;</strong> improvement. <em>My arithmetic</em>: $(17.778 + 13.818 + 15.052)/3 = 15.549$ for VB; $(16.9 + 18.575 + 14.2)/3 = 16.558$ for Lotus-2. ✓</li>
+      </ul>
+
+      <p>The project page bar chart ("Surface Normal — Average over 3 Benchmarks") uses the 3-indoor average. The paper's own Tab. 1 headline uses the 4-dataset average. These are <em>different summaries</em> of Tab. 4, not different numbers &mdash; and the gap between them (1.009&deg; indoor-only vs 0.714&deg; with outdoor included) is the price VB pays on VKitti, where VB <em>loses</em> to Lotus-2 by 0.169&deg; (29.063 vs 28.894, Tab. 4 last column). The paper flags that Lotus-2 trained on VKitti for normals whereas VB did not; the sim-only / zero-shot reading puts this at the same position as the nuScenes depth loss: a driving-scene outdoor benchmark where the specialist's in-distribution training is the stronger signal. Fig. 8 is the qualitative pair &mdash; Lotus-2 numerically wins VKitti but VB "yields demonstrably superior visual quality" (&sect;3.2, last paragraph) &mdash; which is the same subjective-vs-metric dichotomy Zuo et al. documented for NBP, now riding one level up.</p>
+
+      <p>Normals are where VB's codec is <em>cheapest</em>: affine, no warping, no cube walk. Unit vector $(x, y, z) \in [-1, 1]^3 \to (r, g, b) = (x+1, y+1, z+1)/2$ and invert by doubling-and-subtracting-one. &sect;3.2 cashes the endpoints: Facing Left $(-1, 0, 0)$ → pinkish red; Facing Up $(0, 1, 0)$ → light green; Facing the Camera $(0, 0, 1)$ → light blue/purple. The reason this is free is that computer graphics has been rendering "rainbow normal maps" in this exact convention for two decades of matcap shaders and tutorial content, so any image generator trained on the web has seen the codec as if it were a natural style. Normals are the task where the claim "image generation is a universal interface for vision" is easiest to defend, because the interface was already there; what VB adds is the calibration that makes the generator <em>reliable</em> under that interface.</p>
+    </div>
+  </section>
+
+  <!-- =========================== GENERATION KEPT =========================== -->
+  <section id="generation">
+    <div class="wrap">
+      <h2 class="sec">generation kept <span class="desc-inline">// the safety rail that lets the thesis land</span></h2>
+
+      <p>A perception-tuned image generator that has forgotten how to generate images would be a pyrrhic result. The paper's safety rail is two head-to-head human-preference evaluations against NBP itself (paper Tab. 1, also summarized in &sect;2): <strong>GenAI-Bench text-to-image: Vision Banana wins 53.5%</strong>; <strong>ImgEdit image editing: VB wins 47.8%</strong>. Fig. 9 (text-to-image samples) and Fig. 10 (edit pairs) are the qualitative evidence that the visual outputs look nearly identical.</p>
+
+      <div class="fig-wrap accent-pink">
+        <div class="fig-bar">
+          <span class="fig-bar-title">GENERATION PRESERVED &middot; HEAD-TO-HEAD WIN RATES VS NANO BANANA PRO</span>
+          <span class="fig-bar-id">fig: gen/winrates</span>
+        </div>
+        <svg viewBox="0 0 900 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vision Banana head-to-head win rates against Nano Banana Pro: 53.5% on GenAI-Bench text-to-image (VB leads), 47.8% on ImgEdit image editing (NBP leads). Both rates are within a few points of the 50% coin-flip line, showing generation capability is substantially preserved by the instruction-tuning.">
+          <rect x="0" y="0" width="900" height="220" fill="url(#P-grid)" opacity=".4"/>
+          <!-- 50% axis -->
+          <line x1="440" y1="50" x2="440" y2="180" stroke="#ffb020" stroke-width="1" stroke-dasharray="3 3"/>
+          <text x="440" y="42" text-anchor="middle" fill="#ffb020" font-size="10" font-weight="700" letter-spacing=".12em">50% · COIN FLIP</text>
+
+          <!-- Row 1: GenAI-Bench -->
+          <g transform="translate(40,70)">
+            <text x="0" y="-8" fill="#c9d1d9" font-size="11" font-weight="700" letter-spacing=".08em">GenAI-Bench · text-to-image</text>
+            <rect x="0" y="0" width="800" height="28" rx="4" fill="#0a0e14" stroke="rgba(139,148,158,.25)"/>
+            <!-- VB fill to 53.5% → 0 to 428 -->
+            <rect x="0" y="0" width="428" height="28" rx="4" fill="url(#G-green)" stroke="#39ff88" stroke-opacity=".6"/>
+            <text x="12" y="18" fill="#39ff88" font-size="11" font-weight="700">VB 53.5%</text>
+            <text x="788" y="18" text-anchor="end" fill="#ff3fa4" font-size="11" font-weight="700">NBP 46.5%</text>
+          </g>
+          <!-- Row 2: ImgEdit -->
+          <g transform="translate(40,130)">
+            <text x="0" y="-8" fill="#c9d1d9" font-size="11" font-weight="700" letter-spacing=".08em">ImgEdit · image editing</text>
+            <rect x="0" y="0" width="800" height="28" rx="4" fill="#0a0e14" stroke="rgba(139,148,158,.25)"/>
+            <!-- VB 47.8% → 0 to 382.4 -->
+            <rect x="0" y="0" width="382" height="28" rx="4" fill="url(#G-green)" stroke="#39ff88" stroke-opacity=".4"/>
+            <text x="12" y="18" fill="#39ff88" font-size="11" font-weight="700">VB 47.8%</text>
+            <text x="788" y="18" text-anchor="end" fill="#ff3fa4" font-size="11" font-weight="700">NBP 52.2%</text>
+          </g>
+          <!-- note -->
+          <text x="40" y="200" fill="#8b949e" font-size="10" font-style="italic">Both rates within ±5 points of 50% → generation indistinguishable at the benchmark's resolution. Source: paper Tab. 1, §2.</text>
+        </svg>
+      </div>
+      <p class="cap">The 53.5% on GenAI-Bench is a very slight <em>gain</em> on text-to-image &mdash; within noise at that benchmark's preference resolution, but not a loss &mdash; and the 47.8% on ImgEdit is a very slight loss, also within noise. The paper interprets both as "preserved"; I read the asymmetry as the natural consequence of the instruction-tuning data having more text-conditioned task prompts than edit prompts, which nudges text-to-image prompt adherence slightly up and leaves edit unchanged-to-slightly-down. I cannot verify this interpretation against data the paper publishes &mdash; the training mix tokens are not broken down &mdash; so read the read as "one explanation among several", not "the explanation".</p>
+
+      <p>The reason this matters for the thesis: if perception tuning cost the base model measurable generation capability, the result would be a <em>worse image generator that happens to do vision tasks</em>, which is the same shape as the previous generation of specialist diffusion-as-perception works (<a href="https://arxiv.org/abs/2502.17157" target="_blank" rel="noopener">Diception</a>, <a href="https://arxiv.org/abs/2409.18124" target="_blank" rel="noopener">Lotus</a>) that the paper positions itself against (&sect;1). Preserving generation is what lets the paper claim that image-generation pretraining is a <em>generalist</em> learner &mdash; if the tuning were lossy, you'd have evidence only that image-generation features <em>can</em> be rewired for perception, not that perception and generation <em>coexist</em> in one model. The coexistence is the stronger claim, and it's the claim the Tab. 1 win rates support.</p>
+    </div>
+  </section>
+
+  <!-- =========================== READING =========================== -->
+  <section id="reading">
+    <div class="wrap">
+      <h2 class="sec">what's load-bearing <span class="desc-inline">// three mechanism claims, scored</span></h2>
+
+      <p>The paper braids three distinct claims together in &sect;4. Worth unbraiding, because they have different evidentiary weight &mdash; the broad framing claim is under-supported, but a narrower mechanism claim I initially missed is actually the sharpest argument in the paper.</p>
+
+      <div class="grid c2">
+        <div class="card accent-green">
+          <h4>[B, well-supported] image generation as a universal interface</h4>
+          <p>This clause says: vision task outputs can be encoded as RGB images, prompts can specify which encoding, a single generator trained jointly can serve all of them. Every table in the paper supports this. One checkpoint; one token vocab; four very different benchmarks; the prompt is the task-router. Segmentation's codec is per-prompt dictionary; depth's is global Eq. 1; normals' is affine. The "universal interface" claim is the <em>engineering</em> claim, and it is supported by the engineering. The paper would be worth reading for this alone.</p>
+        </div>
+        <div class="card accent-cyan">
+          <h4>[C, well-supported] mode-seeking over mode-averaging</h4>
+          <p>This is the claim I underplayed first time. Paper &sect;4, discussing why generators beat discriminative specialists at ambiguity: <q>expert discriminative models usually resort to custom architectures and training losses. For example, the Segment Anything models return several segmentation masks but only apply the loss to a single one. Generative models, however, inherently learn the full data distribution, gracefully managing ambiguity by design.</q> Read that against Tab. 2d (ReasonSeg gIoU 0.793 vs SAM 3 Agent 0.770): the queries are ambiguous text &mdash; <q>the stretching cat</q>, <q>the game control device</q> &mdash; where multiple masks are plausibly correct. SAM 3 has to pick one; VB's generator learned the whole conditional distribution over masks during pretraining and just samples a plausible one. The reasoning-segmentation win is largest because that is where mode-averaging hurts specialists the most. This is a specific <em>mechanism</em> claim, not a framing, and the results are consistent with it.</p>
+        </div>
+        <div class="card accent-amber">
+          <h4>[A, under-supported] image generators are generalist vision <em>learners</em></h4>
+          <p>This is the headline clause, and it is the stronger one &mdash; it claims something about <em>what NBP's pretraining produced</em>, not just about how you can interface it. Supporting it rigorously would require a controlled baseline: instruction-tune a <em>non-generative</em> foundation model (a DINOv3, an MAE-large) with the same codec, on the same mixture, at comparable scale, and compare. The paper does not run this experiment. What it shows is that <em>this</em> generative model + <em>this</em> codec + <em>this</em> mixture beats specialists. The inference "therefore generators-in-general are generalist vision learners" requires the counterfactual "a non-generative foundation model at the same parameter-and-data scale would do worse", which is what the paper lacks. I believe the claim is probably true &mdash; Wiedemer et al. 2025 on Veo 3 is corroborating evidence from a sibling setup &mdash; but I can't verify it from this paper alone. Tag: "paper framing, under-supported by paper evidence".</p>
+        </div>
+        <div class="card">
+          <h4>[meta] what the codec does vs what the generator does</h4>
+          <p>The three claims interact. The <em>codec</em> (B) is doing most of the engineering work: it lets the generator's output be scored as a metric without asking it to be pixel-exact. The <em>mode-seeking</em> property (C) is doing the lifting on ambiguous tasks where pixel-exactness isn't the only thing the specialist lacks. The <em>generalist learner</em> framing (A) is the paper's bid for paradigm importance. If you want to pull threads out and reuse them, B is the most portable (drop it on any generator), C is the most mechanistically specific (it explains <em>which tasks</em> VB wins most), and A is the claim that will either age well with more experiments or shrink into "<em>our specific big generator</em> was a generalist learner". Separating them is what lets you read the paper without buying the framing wholesale.</p>
+        </div>
+      </div>
+
+      <p style="margin-top:16px"><b>Where the win-pattern confirms each claim.</b> VB's biggest leads are on ReasonSeg (+0.023, C strongest), DIODE-Indoor depth (+0.079, B strongest), and indoor surface normals (+1.009° over Lotus-2, B strongest because codec is trivial). VB's only loss outside instance segmentation is NYU depth (-0.017), a benchmark specialists have overfit on for 13 years &mdash; consistent with A being weak on benchmarks where in-domain training was the biggest lever. The pattern of wins and losses maps to the three claims as follows: <em>where the codec is clean</em> (depth, normals, reasoning seg), VB wins; <em>where the codec forces a detour</em> (instance seg, one-class-per-inference), VB loses; <em>where the generator's priors substitute for intrinsics</em> (unusual indoor scenes), VB wins by wide margins. That maps the codec claim B to wins and the generalist-learner claim A to losses &mdash; which is the opposite of what the headline suggests.</p>
+
+      <div class="callout" data-variant="k">
+        <span class="t">the simple reading I keep coming back to</span>
+        <p>Forget "paradigm shift for computer vision" for a second. The paper is arguing for one move, loudly and well: <em>parameterize vision task outputs as RGB images through an invertible codec, train the generator jointly on task data and its own pretraining mix, evaluate by inversion of the codec</em>. That move was publicly proposed before (<a href="https://arxiv.org/abs/2312.02145" target="_blank" rel="noopener">Marigold</a>, Ke et al., has depth-as-diffusion-output, <em>affine-invariant</em>; <a href="https://arxiv.org/abs/2502.17157" target="_blank" rel="noopener">Diception</a>, Zhao et al., is a generalist diffusion model for perception tasks), and the Vision Banana paper explicitly acknowledges this prior line (&sect;4, <q>we are not the first to encode vision outputs as RGB</q>). The unique contribution is (i) doing it on a frontier-class image generator, (ii) <em>keeping</em> generation capability via joint mixture instead of sacrificing it, (iii) designing the depth codec to carry <em>metric</em> scale instead of affine-invariant relative depth, and (iv) demonstrating that the mode-seeking property transfers cleanly to ambiguous reasoning tasks. That's four increments on the prior art, each specific. The broader framing &mdash; "generators are generalist learners" &mdash; is a bet I expect independent teams to test within a year by running the same codec on open base models of varying scale.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== OPEN =========================== -->
+  <section id="open">
+    <div class="wrap">
+      <h2 class="sec">open <span class="desc-inline">// what the paper leaves for the next one</span></h2>
+
+      <p>The paper's own "Future Work" paragraph (&sect;4) names four lines: more task diversity; multi-view inputs and video; cross-modal reasoning with LLMs; cost reduction (NBP is far more expensive per image than a specialist). My own list overlaps but re-prioritizes. In roughly increasing difficulty:</p>
+
+      <div class="grid c2">
+        <div class="card">
+          <h4>[1] instance segmentation codec redesign</h4>
+          <p>The one-class-per-inference workaround is the weak link. A plausibly cleaner pattern: emit a single pass that uses <em>shaped-color</em> assignments &mdash; e.g. hue for class, value for instance ID &mdash; so that instance count is discoverable from the generated image, not pre-specified. This is a codec problem, not a model problem; it should be resolvable by anyone with access to the training pipeline and does not need a new base model.</p>
+        </div>
+        <div class="card">
+          <h4>[2] ablation of the base-model-vs-codec contribution</h4>
+          <p>Replicate the paper's recipe on a smaller open generator (e.g. <a href="https://bfl.ai/blog/flux-2" target="_blank" rel="noopener">FLUX.2</a> or similar) with identical codec and identical instruction-tuning recipe. If the codec carries most of the weight, the open-base variant should get most of the way to VB's numbers; if the base model carries most, it won't. Either answer is informative. This is the experiment a university lab could run.</p>
+        </div>
+        <div class="card">
+          <h4>[3] video and multi-view inputs</h4>
+          <p>Monocular is the easy case. A video input with $n$ frames + codec for optical flow or 3D tracking would stretch the claim to temporal perception. The paper gestures at this (&sect;4, <q>video generators yield even richer, temporally-aware visual representations</q>) without running it. Veo 3 is the obvious base-model candidate; the codec design for dense temporal outputs is the research question.</p>
+        </div>
+        <div class="card">
+          <h4>[4] the verifier gap</h4>
+          <p>The codec is an invertible encoding, but the <em>evaluation</em> still cares about metric accuracy: $\delta_1$ on meters, mIoU on masks. For tasks where the gold-standard verifier is expensive or absent (open-ended scene description, affordance reasoning, physical-plausibility judgment), the generator can produce <em>a</em> visualization, but there is no codec to invert against a reference. This is a deeper gap: the current codec recipe assumes a dense per-pixel target. Sparse or structured outputs &mdash; 6-DoF poses, scene graphs, physics parameters &mdash; don't map to RGB-as-bijection in any obvious way. My guess is this is where the "generator as universal interface" claim starts to leak.</p>
+        </div>
+        <div class="card">
+          <h4>[5] no weights, no config, no reproduction</h4>
+          <p>Vision Banana is built on NBP, which is API-only. There are no checkpoints, no configs, no prompt banks published. Even the vision-task-slice dataset (synthetic depth from "simulation engines", in-house 2D annotations) is not named. Everything in this article is reconstructed from the paper's prose and leaderboards; I could not pin a single SHA. The paper's result is interesting enough that an open replication would be high-value; without one, the details of how Nano Banana Pro's pretraining, specifically, interacts with the codec are untestable from outside Google.</p>
+        </div>
+        <div class="card">
+          <h4>[6] "inventing the vision task"</h4>
+          <p>The loop's pattern, end-to-end: pick a task with a cheap invertible codec, mix data, get SOTA. What would convince me of the stronger "paradigm shift" framing is a task the paper's framework <em>invents</em> rather than adopts &mdash; a new dense prediction the generator's world-knowledge priors make tractable but which wasn't a benchmark before. Without that, the pattern is <em>the generator beats specialists on tasks specialists defined</em>. With it, the pattern is <em>the generator defines tasks specialists can't attempt</em>. That's the real paradigm-shift bar.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== TAKEAWAYS =========================== -->
+  <section id="takeaways">
+    <div class="wrap">
+      <h2 class="sec">takeaways <span class="desc-inline">// signed off</span></h2>
+      <div class="grid c2">
+        <div class="card">
+          <h4>[01] The codec defeats the pixel-consistency metric</h4>
+          <p>Zuo et al. (2025) diagnosed the problem: Nano Banana Pro is subjectively better than specialists but loses on PSNR/SSIM because it hallucinates plausible detail. Vision Banana's codec is the fix &mdash; not by making NBP more pixel-exact, but by <em>routing the benchmark through a different channel</em>: generate RGB, invert the codec, measure the physical quantity. Pixel-level hallucination becomes irrelevant as long as it stays inside the codec-cell. That's the single sentence to carry forward from this paper.</p>
+        </div>
+        <div class="card">
+          <h4>[02] The depth codec is the portable engineering</h4>
+          <p>The power transform + Gray-code Hamiltonian walk (Eq. 1, &sect;3.2) is the design I expect independent teams to cite and reuse. $\lambda = -3,\, c = 10/3$ puts 75% of output range into the first 10 meters, then saturates smoothly. The walk is not the canonical Hilbert curve but it's in the same family &mdash; each step flips one RGB bit, locality is preserved. Any heavy-tailed dense-scalar task (flow magnitude, disparity, time-to-contact) can borrow this pattern.</p>
+        </div>
+        <div class="card">
+          <h4>[03] Mode-seeking is where VB's biggest wins come from</h4>
+          <p>Specialists like SAM 3 apply the loss to a single mask when outputs are ambiguous &mdash; a mode-averaging collapse. Generators learn the full conditional distribution and sample one plausible mode. VB's widest single-dataset win is ReasonSeg gIoU (0.793 vs 0.770, +0.023), exactly where ambiguity is highest. This isn't the paper's headline mechanism but it's the cleanest mechanism claim it <em>does</em> make, and the wins-pattern supports it. &sect;4 names it; it deserves more citations than it will get.</p>
+        </div>
+        <div class="card">
+          <h4>[04] Losses are informative &mdash; read the table by row, not average</h4>
+          <p>VB loses four things: SA-Co/Gold instance seg (codec-limited by one-class-per-inference), NYU depth (by 0.017 to UniK3D, which uses intrinsics), KITTI depth (by 0.038 to DA&nbsp;3, ditto), nuScenes depth (to D&thinsp;Pro/UniK3D, both intrinsics-using). Every loss is either codec-structural or against a specialist using camera intrinsics. VB <em>beats</em> DA&nbsp;3 on nuScenes (0.643 vs 0.491) &mdash; a fact that disappeared in my first draft because I misread the column mapping. The pattern is tight: codec-clean + intrinsics-irrelevant → VB wins.</p>
+        </div>
+      </div>
+
+      <div class="callout" data-variant="ok" style="margin-top:28px">
+        <span class="t">// end of notebook</span>
+        <p>The piece of Vision Banana I'll be watching isn't the next "beats SAM X" headline. It's whether the codec-routes-around-pixel-metrics pattern shows up on open base models of lower scale. The paper's tightest claim &mdash; that an invertible RGB codec plus a thin joint-tune is enough to convert a frontier image generator into a generalist perceiver, precisely because the codec bypasses the Zuo-2025 pixel-consistency penalty &mdash; is the claim that travels. It says something specific about where perception's "head" actually needs to live (in the codec, not in the architecture) and what Nano Banana Pro's pretraining already knows (enough to render any dense task whose output fits in the RGB cube). If an independent team reproduces the codec on a smaller open generator and hits 80% of VB's numbers, the thesis is confirmed and the field has a template. If they hit 30%, the generator's scale is doing more of the work than the paper admits, and the "generators are generalist learners" claim narrows to "<em>our</em> generator is". The experiment to run next is a codec-controlled base-model-scale scan, and my read is someone will run it within a year. What I'd want that paper to include, that this one doesn't: an ablation that swaps the Hilbert walk for a straight diagonal through the cube, another that runs on a non-generative foundation model of matched scale, and a table of how VB performs <em>without</em> joint-mix (i.e., how much of the generation-preservation safety rail is actually load-bearing). Each of those is a load-bearing piece of the framing this paper leaves implicit.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== REFERENCES =========================== -->
+  <section id="references">
+    <div class="wrap">
+      <h2 class="sec">references</h2>
+      <ul>
+        <li>Primary &middot; <a href="https://arxiv.org/abs/2604.20329" target="_blank" rel="noopener">Gabeur, Long, Peng et al. <em>Image Generators are Generalist Vision Learners</em>. arXiv:2604.20329, 22 Apr 2026</a>. The Vision Banana technical report.</li>
+        <li>Project &middot; <a href="https://vision-banana.github.io/" target="_blank" rel="noopener">vision-banana.github.io</a> &mdash; Google DeepMind project page with interactive demos over segmentation, depth, normals, and the comparison bar-charts cited in Tab. 1.</li>
+        <li>Base model &middot; <a href="https://blog.google/innovation-and-ai/products/nano-banana-pro/" target="_blank" rel="noopener">Google. <em>Introducing Nano Banana Pro</em></a> &mdash; the frontier image generator VB instruction-tunes from. API-only, no config / weights.</li>
+        <li>Motivational &middot; <a href="https://arxiv.org/abs/2509.20328" target="_blank" rel="noopener">Wiedemer, Li, Vicol, Gu, Matarese, Swersky, Kim, Jaini, Geirhos. <em>Video models are zero-shot learners and reasoners</em>. arXiv:2509.20328, Sep 2025</a>. Veo 3 zero-shot: segmentation, edges, image editing, physical property inference, affordances, tool use, mazes, symmetry. The sibling-setup evidence that motivated VB.</li>
+        <li>Motivational &middot; <a href="https://arxiv.org/abs/2512.15110" target="_blank" rel="noopener">Zuo et al. <em>Is Nano Banana Pro a Low-Level Vision All-Rounder? A Comprehensive Evaluation on 14 Tasks and 40 Datasets</em>. arXiv:2512.15110, Dec 2025</a>. Documents the subjective-quality-vs-pixel-metric dichotomy that VB's codec is specifically designed to route around. Code: <a href="https://github.com/Zplusdragon/LowLevelBanana" target="_blank" rel="noopener">github.com/Zplusdragon/LowLevelBanana</a>.</li>
+        <li>Depth codec &middot; <a href="https://arxiv.org/abs/2502.10647" target="_blank" rel="noopener">Barron. <em>A Power Transform</em>. arXiv:2502.10647, Feb 2025</a>. Unifying $\lambda$-parameterized family spanning loss functions, kernels, distributions, bump functions, activations; the $\lambda < -1$ branch is what Eq. 1 of VB selects.</li>
+        <li>Direct precedent &middot; <a href="https://arxiv.org/abs/2312.02145" target="_blank" rel="noopener">Ke, Obukhov, Huang, Metzger, Daudt, Schindler. <em>Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation</em> (Marigold). CVPR 2024; arXiv:2312.02145</a>. The earliest clean "diffusion as perception" work. <em>Affine-invariant</em> depth &mdash; needs per-scene alignment. VB's codec is the metric-capable upgrade.</li>
+        <li>Direct precedent &middot; <a href="https://arxiv.org/abs/2409.18124" target="_blank" rel="noopener">He, Li, Yin, Liang, Li, Zhou, Zhang, Liu, Chen. <em>Lotus: Diffusion-based Visual Foundation Model for High-Quality Dense Prediction</em>. arXiv:2409.18124, 2024</a>. Specialist-finetuning branch of the diffusion-as-perception lineage.</li>
+        <li>Direct precedent &middot; <a href="https://arxiv.org/abs/2502.17157" target="_blank" rel="noopener">Zhao, Sun, Liu, Zheng, Zhu, Zhao, Chen, He, Shen. <em>Diception: A Generalist Diffusion Model for Visual Perceptual Tasks</em>. arXiv:2502.17157, 2025</a>. The closest prior generalist-via-RGB work. VB explicitly positions against it in &sect;4 ("we are not the first to encode vision outputs as RGB").</li>
+        <li>Segmentation baseline &middot; <a href="https://arxiv.org/abs/2511.16719" target="_blank" rel="noopener">Carion et al. <em>SAM 3: Segment Anything with Concepts</em>. arXiv:2511.16719, Nov 2025</a>. The zero-shot-transfer baseline on Cityscapes, RefCOCOg, and ReasonSeg (via SAM 3 Agent).</li>
+        <li>Depth baselines &middot; <a href="https://arxiv.org/abs/2511.10647" target="_blank" rel="noopener">Lin et al. <em>Depth Anything 3</em>. arXiv:2511.10647</a>; <a href="https://arxiv.org/abs/2410.02073" target="_blank" rel="noopener">Bochkovskii et al. <em>Depth Pro</em>. arXiv:2410.02073</a>; <a href="https://arxiv.org/abs/2507.02546" target="_blank" rel="noopener">Wang et al. <em>MoGe-2</em>. arXiv:2507.02546</a>; the UniK3D and DepthLM-7B papers referenced in Tab. 3.</li>
+        <li>Normal baseline &middot; <a href="https://arxiv.org/abs/2512.01030" target="_blank" rel="noopener">He et al. <em>Lotus-2: Advancing Geometric Dense Prediction with Powerful Image Generative Model</em>. arXiv:2512.01030, Dec 2025</a>. Previous SOTA on indoor surface normals; VB wins the Tab. 4 3-indoor average by 1.009&deg;.</li>
+        <li>Instance seg. baseline &middot; <a href="https://arxiv.org/abs/2411.14347" target="_blank" rel="noopener">Ren et al. <em>DINO-X</em>. arXiv:2411.14347, 2024</a>. The one row VB does not lead (SA-Co/Gold pmF<sub>1</sub>).</li>
+        <li>Evaluation &middot; <a href="https://arxiv.org/abs/2406.13743" target="_blank" rel="noopener">Li et al. <em>GenAI-Bench</em>. arXiv:2406.13743, 2024</a> (53.5% win rate); <a href="https://arxiv.org/abs/2505.20275" target="_blank" rel="noopener">Ye et al. <em>ImgEdit</em>. arXiv:2505.20275, 2025</a> (47.8% win rate).</li>
+        <li>Terminology &middot; <a href="https://arxiv.org/abs/2304.02643" target="_blank" rel="noopener">Kirillov et al. <em>Segment Anything</em>. arXiv:2304.02643, 2023</a>. Source of the "zero-shot transfer" protocol Tab. 2 uses &mdash; no training on the benchmark's own train split.</li>
+        <li>Related reading on thinklab &middot; <a href="../alphago-10/">AlphaGo at 10</a> (the policy-proposes / verifier-scores loop; cf. VB's codec-encodes / invert-and-score); <a href="../qwen3-5-omni/">Qwen3.5-Omni</a> (another "reframe the output channel" paper, in speech); <a href="../lewm/">LeWorldModel</a> (latent models as output-channel bottlenecks).</li>
+      </ul>
+    </div>
+  </section>
+
+</div><!-- /.shell -->
+
+<script src="../../assets/theme.js"></script>
+</body>
+</html>

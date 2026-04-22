@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Qwen3.5-Omni: the two bets under one Thinker-Talker — ARIA's monotonic ratio constraint replaces MFA + fixed interleave, Hybrid-Attention (GDN + attention) tames 256k-ctx audio-video. Code-traced against the 3-Omni predecessor config and the DashScope demo." />
+<meta name="theme-color" content="#05070a" />
+<title>Qwen3.5-Omni — ARIA and the Hybrid-Attention Thinker-Talker — thinklab</title>
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+<link rel="canonical" href="/articles/qwen3-5-omni/" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" /></noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" />
+<link rel="stylesheet" href="../../assets/theme.css" />
+<script defer src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="(window.requestIdleCallback||function(f){return setTimeout(f,0)})(function(){renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});});"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+</head>
+<body class="page-article">
+
+<a class="home-btn" href="../../" aria-label="Back to index"><span class="arrow">&larr;</span><span class="label">cd&nbsp;~</span></a>
+<div id="scroll-progress" aria-hidden="true"></div>
+<button id="to-top" aria-label="back to top" title="back to top">&uarr;</button>
+
+<!-- shared svg defs -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="G-blue"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#1b2b52"/><stop offset="1" stop-color="#0a1124"/></linearGradient>
+    <linearGradient id="G-violet" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#2e1a55"/><stop offset="1" stop-color="#180c32"/></linearGradient>
+    <linearGradient id="G-teal"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0d3d33"/><stop offset="1" stop-color="#062018"/></linearGradient>
+    <linearGradient id="G-orange" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4a2414"/><stop offset="1" stop-color="#22100a"/></linearGradient>
+    <linearGradient id="G-pink"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4e1a33"/><stop offset="1" stop-color="#26091a"/></linearGradient>
+    <linearGradient id="G-slate"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#11162a"/><stop offset="1" stop-color="#070a14"/></linearGradient>
+    <linearGradient id="G-green"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0b3a22"/><stop offset="1" stop-color="#051f12"/></linearGradient>
+    <linearGradient id="G-rainbow" x1="0" x2="1">
+      <stop offset="0"   stop-color="#39ff88"/>
+      <stop offset=".33" stop-color="#00e5ff"/>
+      <stop offset=".66" stop-color="#9d7bff"/>
+      <stop offset="1"   stop-color="#ff3fa4"/>
+    </linearGradient>
+    <linearGradient id="G-neon-green" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#1a2a1e"/><stop offset="1" stop-color="#0a1710"/></linearGradient>
+    <linearGradient id="G-glow-blue"  x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#00e5ff" stop-opacity=".35"/><stop offset="1" stop-color="#00e5ff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="G-glow-green" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#39ff88" stop-opacity=".32"/><stop offset="1" stop-color="#39ff88" stop-opacity="0"/></linearGradient>
+
+    <radialGradient id="G-hot-green" cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#39ff88" stop-opacity=".6"/><stop offset="1" stop-color="#39ff88" stop-opacity="0"/></radialGradient>
+    <radialGradient id="G-hot-cyan"  cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#00e5ff" stop-opacity=".55"/><stop offset="1" stop-color="#00e5ff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="G-hot-mag"   cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#ff3fa4" stop-opacity=".55"/><stop offset="1" stop-color="#ff3fa4" stop-opacity="0"/></radialGradient>
+
+    <filter id="F-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dx="0" dy="2" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".5"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-neon" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="b1"/>
+      <feGaussianBlur stdDeviation="1.5" result="b2"/>
+      <feMerge><feMergeNode in="b1"/><feMergeNode in="b2"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow-green" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="0 0 0 0 .22  0 0 0 0 1  0 0 0 0 .55  0 0 0 .7 0" result="cb"/>
+      <feMerge><feMergeNode in="cb"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow-cyan" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="0 0 0 0 0  0 0 0 0 .9  0 0 0 0 1  0 0 0 .7 0" result="cb"/>
+      <feMerge><feMergeNode in="cb"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <pattern id="P-grid" width="22" height="22" patternUnits="userSpaceOnUse">
+      <path d="M 22 0 L 0 0 0 22" fill="none" stroke="#1a2338" stroke-width=".5"/>
+      <circle cx="0" cy="0" r="1" fill="#2a3458" opacity=".55"/>
+    </pattern>
+    <pattern id="P-dots" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#2a3458" opacity=".55"/>
+    </pattern>
+    <pattern id="P-scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <path d="M 0 4 L 4 0" stroke="#39ff88" stroke-width=".3" opacity=".18"/>
+    </pattern>
+    <pattern id="P-circuit" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M 0 20 L 20 20 L 20 0 M 40 60 L 40 40 L 60 40" fill="none" stroke="#1e3a52" stroke-width=".6" opacity=".5"/>
+      <circle cx="20" cy="20" r="1.4" fill="#00e5ff" opacity=".35"/>
+      <circle cx="40" cy="40" r="1.4" fill="#39ff88" opacity=".35"/>
+    </pattern>
+
+    <marker id="A-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#00e5ff"/></marker>
+    <marker id="A-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9d7bff"/></marker>
+    <marker id="A-teal"   viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#39ff88"/></marker>
+    <marker id="A-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffb020"/></marker>
+    <marker id="A-green"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#39ff88"/></marker>
+    <marker id="A-mag"    viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ff3fa4"/></marker>
+    <marker id="A-amber"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffd166"/></marker>
+    <marker id="arrow"    viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c9d1d9"/></marker>
+
+    <symbol id="S-corner" viewBox="0 0 14 14">
+      <path d="M 1 6 L 1 1 L 6 1" fill="none" stroke="#39ff88" stroke-width="1.2"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="shell">
+
+  <!-- =========================== HERO =========================== -->
+  <header class="hero">
+    <div class="hero-term">
+      <div class="term-bar">
+        <span class="term-dot d-r"></span>
+        <span class="term-dot d-y"></span>
+        <span class="term-dot d-g"></span>
+        <span class="term-title">~/qwen/qwen3.5-omni &mdash; tech-report.md</span>
+      </div>
+      <div class="term-body">
+        <div class="term-prompt">
+          <span class="path">reader@thinklab</span>:<span class="cmd">~/qwen3-5-omni</span>$ cat paper.md | render --theme=geek<span class="cursor"></span>
+        </div>
+        <h1>Qwen3.5-Omni &middot; ARIA and the Hybrid-Attention Thinker-Talker</h1>
+        <p class="sub">
+          <span class="line">I sat with the 17-page Qwen3.5-Omni technical report (<a href="https://arxiv.org/abs/2604.15804" target="_blank" rel="noopener">arXiv:2604.15804v2</a>, 2026-04-21) for two afternoons and came away thinking the report buries the lede. The headline numbers &mdash; 215 SOTA subtasks, Plus-matches-Gemini-3.1-Pro &mdash; are fine. But the thing the paper actually earns the right to teach you about is two decoupled bets that happen to ship in one model.</span>
+          <span class="line">Bet 1 is <strong>ARIA</strong>: an alignment model between text and speech tokens replaced by a single monotonic inequality. Bet 2 is <strong>Hybrid-Attention</strong> &mdash; attention layers interleaved with Gated Delta Net layers &mdash; slotted into a Thinker-Talker scaffold that already had MoE since 3-Omni, so that a 256k-token audio-video stream doesn't blow up the KV cache. Most of the rest of the paper is table-shaped evidence that these two worked. What follows is my reading log: what the two bets actually are, why they're clean, what I think is missing, and where the public release surface quietly disagrees with the paper's framing.</span>
+        </p>
+        <div class="hero-badges">
+          <span class="hero-badge" data-variant="green">Thinker-Talker</span>
+          <span class="hero-badge" data-variant="cyan">AuT &middot; 6.25 Hz</span>
+          <span class="hero-badge" data-variant="magenta">ARIA &middot; single-stream</span>
+          <span class="hero-badge" data-variant="violet">MoE + GDN</span>
+          <span class="hero-badge" data-variant="amber">API-only &middot; v2</span>
+        </div>
+        <div class="hero-toc">
+          <a href="#overview">overview</a>
+          <a href="#arch">architecture</a>
+          <a href="#aria">aria</a>
+          <a href="#hybrid">hybrid-attn</a>
+          <a href="#training">training</a>
+          <a href="#eval">evaluation</a>
+          <a href="#drift">drift</a>
+          <a href="#takeaways">takeaways</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================== TL;DR =========================== -->
+  <div class="callout" data-variant="k">
+    <span class="t">TL;DR</span>
+    <p>
+      <strong>ARIA replaces MFA + dual-channel generation with a single monotonic inequality</strong> (&sect;2.4): for any prefix of the generated sequence, the cumulative speech-to-text token ratio must not exceed the item-level global ratio. One line, no alignment model, no fixed interleave constant. And the <strong>Hybrid-Attention MoE</strong> (&sect;2.5) is not MoE on top of full attention &mdash; it's MoE on top of a hybrid of attention and Gated Delta Net layers. That's the piece of engineering that keeps the Time-To-First-Chunk on 256k-ctx audio-video under control (Flash 235 ms audio / 426 ms video first-packet, Table 1), and it's what 3-Omni's plain-attention Thinker-and-Talker (<a href="https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Instruct/blob/26291f793822fb6be9555850f06dfe95f2d7e695/config.json" target="_blank" rel="noopener">config.json at pinned SHA</a>: <span><code>max_position_embeddings</code>: 65536 in both Thinker and Talker text_config, <code>num_experts</code>: 128 in both, <code>num_key_value_heads</code>: 4 Thinker / 2 Talker, <code>head_dim</code>: 128, no gated-delta / linear-attention flag</span>) didn't yet have. The release itself is the loud caveat: Qwen3-Omni shipped Apache-2.0 open weights; Qwen3.5-Omni ships as a DashScope API only, <em>qwen3.5-omni-plus</em> and <em>-flash</em> tiers. My read is this is a regression in openness worth naming plainly, not buried in footnotes.
+    </p>
+  </div>
+
+  <!-- =========================== OVERVIEW =========================== -->
+  <section id="overview">
+    <div class="wrap">
+      <h2 class="sec">overview <span class="desc-inline">// what 3.5 actually changes</span></h2>
+      <p>
+        A quick family tree, because the three generations are easy to blur. <a href="https://arxiv.org/abs/2503.20215" target="_blank" rel="noopener">Qwen2.5-Omni</a> introduced the Thinker-Talker scaffold &mdash; a text-generating Thinker whose high-level representations are read by a Talker that emits speech tokens &mdash; together with TMRoPE for audio-video timestamp fusion. <a href="https://arxiv.org/abs/2509.17765" target="_blank" rel="noopener">Qwen3-Omni</a> (30B-A3B, Apache-2.0) swapped the Talker's output channel onto an RVQ codec with a multi-token-prediction (MTP) residual head plus a causal Code2Wav renderer, made both Thinker and Talker MoE on top of standard attention, and extended the training context to 64k. <a href="https://arxiv.org/abs/2604.15804" target="_blank" rel="noopener">Qwen3.5-Omni</a> keeps that scaffold and &mdash; per paper &sect;1's "five key technical upgrades" &mdash; moves on three concrete axes worth teaching about:
+      </p>
+      <ol>
+        <li><strong>Hybrid-Attention replaces standard attention in both Thinker and Talker.</strong> The paper's exact phrasing (&sect;1) is that both blocks now "adopt Hybrid-Attention Mixture-of-Experts (MoE) designs". The MoE part is unchanged from 3-Omni &mdash; that model's public config.json already has <code>num_experts: 128</code> in both Thinker and Talker. The novelty is the <em>attention</em> side: a Gated Delta Net + attention hybrid (&sect;2.5) taking over from vanilla attention. This is what I've been calling the long-audio-video engineering bet.</li>
+        <li><strong>Context extends from 3-Omni's 64k to <span>262,144 tokens</span>.</strong> Four times the predecessor's <code>max_position_embeddings</code>, native-pretrained in stage S3 (&sect;3), not YaRN-extrapolated. What buys the paper's headline "over 10 hours of audio, 400 seconds of 720P video at 1 FPS" claim.</li>
+        <li><strong>ARIA replaces the dual-channel Talker input.</strong> Instead of two tracks (text and speech) that need a Montreal Forced Aligner output to interleave, a single stream is emitted under one ratio constraint. That is the whole alignment model, gone. Novel to 3.5.</li>
+      </ol>
+      <p>
+        The reason this shape is interesting isn't any single number. It's that each of the three can be held independently. ARIA could have landed on 3-Omni's plain-attention MoE; the GDN-hybrid could have landed without ARIA; long-context could have landed on top of 3-Omni's dual-channel. The paper treats them as a package, but you can mentally unbundle them, and I think that's how they'll age: ARIA is a paper-quality idea someone else will copy, the Hybrid-Attention is engineering that competitors will match, and the 256k audio-video stream is a composition of both.
+      </p>
+      <div class="grid c3">
+        <div class="card">
+          <h4>three lineage axes</h4>
+          <ul>
+            <li><strong>Scaffold</strong>: Thinker-Talker, unchanged since 2.5</li>
+            <li><strong>Speech output</strong>: RVQ + MTP + Code2Wav, unchanged since 3-Omni</li>
+            <li><strong>Alignment</strong>: MFA &rarr; dual-channel (2.5) &rarr; ARIA (3.5)</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>what 3.5 actually adds</h4>
+          <ul>
+            <li><strong>Hybrid-Attention</strong> (GDN + attention) in both blocks (new)</li>
+            <li><strong>256k ctx</strong>, S3 stage in pretraining (4&times; 3-Omni's 64k, new)</li>
+            <li><strong>ARIA single-stream</strong> with ratio constraint (new)</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h4>what's unchanged but worth noting</h4>
+          <ul>
+            <li><strong>MoE</strong> in both Thinker and Talker (inherited from 3-Omni)</li>
+            <li><strong>AuT</strong> audio encoder from scratch, 6.25 Hz output</li>
+            <li><strong>SigLIP2</strong> vision; <strong>RVQ + MTP + Code2Wav</strong> speech</li>
+          </ul>
+        </div>
+      </div>
+      <p>
+        One honesty note before the architecture section. The public release surface is thinner than the paper suggests &mdash; worth digging into in the <a href="#drift">drift section</a> because it's a content claim, not a caveat. Short version: the only code you can read today is the <a href="https://huggingface.co/spaces/Qwen/Qwen3.5-Omni-Offline-Demo" target="_blank" rel="noopener">DashScope demo app</a>, and that app has a grand total of zero lines of the actual model architecture &mdash; it's an OpenAI-compatible client pointed at <code>dashscope.aliyuncs.com</code>. Every architecture number below is sourced to the paper <em>&sect;N.M</em>, not to a <code>config.json</code>, because the <code>config.json</code> that would let a reader cross-check param counts, expert counts, and layer widths is not public. That's the honesty tax a 3.5 deep-dive has to pay.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================== ARCHITECTURE =========================== -->
+  <section id="arch">
+  <!-- principle: Hybrid-Attention adds GDN alongside attention -->
+    <div class="wrap">
+      <h2 class="sec">architecture <span class="desc-inline">// the map</span></h2>
+      <p>
+        Figure 2 in the paper is a tidy overview, but I found it easier to think about the model as four blocks wrapped in two streaming loops. The four blocks are: <strong>(1) AuT + SigLIP2</strong> encoding the audio-visual input, <strong>(2) Thinker</strong> generating text tokens, <strong>(3) Talker</strong> generating RVQ codebook indices, and <strong>(4) MTP + Code2Wav</strong> turning those indices into waveform frames. The two loops are: the <em>Thinker prefill loop</em> (chunked streaming over audio and video) and the <em>Talker output loop</em> (one text token and a handful of speech tokens per step, scheduled by ARIA).
+      </p>
+
+      <div class="svg-wrap">
+        <svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Qwen3.5-Omni architecture map: AuT and SigLIP2 feed the Thinker, whose hidden states feed the Talker; Talker emits RVQ codes that MTP and Code2Wav render to waveform, all under ARIA scheduling">
+          <rect x="0" y="0" width="960" height="560" fill="url(#G-slate)"/>
+          <rect x="0" y="0" width="960" height="560" fill="url(#P-grid)"/>
+
+          <!-- header strip -->
+          <g>
+            <rect x="16" y="10" width="928" height="24" rx="3" fill="#0a0e14" stroke="rgba(57,255,136,.22)"/>
+            <text x="30" y="26" fill="#39ff88" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" letter-spacing=".14em">&#9678; QWEN3.5-OMNI &middot; THINKER-TALKER MAP</text>
+            <text x="480" y="26" fill="#a9afc3" font-family="'JetBrains Mono',monospace" font-size="10" text-anchor="middle" letter-spacing=".06em">arrows: left = input stream, right = audio output stream</text>
+            <text x="940" y="26" fill="#8b949e" font-family="'JetBrains Mono',monospace" font-size="10" text-anchor="end" letter-spacing=".06em">fig: arch/overview</text>
+          </g>
+
+          <!-- INPUT ENCODERS (left column) -->
+          <g transform="translate(40,60)">
+            <text x="0" y="0" fill="#39ff88" font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" letter-spacing=".12em">[01] INPUTS + ENCODERS</text>
+            <!-- text -->
+            <g transform="translate(0,16)">
+              <rect x="0" y="0" width="200" height="56" rx="6" fill="url(#G-slate)" stroke="rgba(201,209,217,.35)" stroke-width="1"/>
+              <text x="12" y="20" fill="#e6edf3" font-family="'Space Grotesk',sans-serif" font-size="13" font-weight="700">text</text>
+              <text x="12" y="38" fill="#a9afc3" font-family="'JetBrains Mono',monospace" font-size="10">vocab 250k &middot; BPE</text>
+              <text x="12" y="52" fill="#a9afc3" font-family="'JetBrains Mono',monospace" font-size="10">+10..60% encoding eff.</text>
+            </g>
+            <!-- image / video -->
+            <g transform="translate(0,84)">
+              <rect x="0" y="0" width="200" height="72" rx="6" fill="url(#G-blue)" stroke="#00e5ff" stroke-opacity=".55"/>
+              <text x="12" y="20" fill="#e6edf3" font-family="'Space Grotesk',sans-serif" font-size="13" font-weight="700">image / video</text>
+              <text x="12" y="38" fill="#a5ecff" font-family="'JetBrains Mono',monospace" font-size="10">SigLIP2 vision encoder</text>
+              <text x="12" y="52" fill="#a5ecff" font-family="'JetBrains Mono',monospace" font-size="10">dynamic-fps sampling</text>
+              <text x="12" y="66" fill="#a5ecff" font-family="'JetBrains Mono',monospace" font-size="10">timestamp-as-text prefix</text>
+            </g>
+            <!-- audio -->
+            <g transform="translate(0,168)">
+              <rect x="0" y="0" width="200" height="88" rx="6" fill="url(#G-teal)" stroke="#39ff88" stroke-opacity=".65"/>
+              <text x="12" y="20" fill="#e6edf3" font-family="'Space Grotesk',sans-serif" font-size="13" font-weight="700">audio / audio-in-video</text>
+              <text x="12" y="38" fill="#b8f0d9" font-family="'JetBrains Mono',monospace" font-size="10">16 kHz &rarr; 128-ch mel</text>
+              <text x="12" y="52" fill="#b8f0d9" font-family="'JetBrains Mono',monospace" font-size="10">25 ms win / 10 ms hop</text>
+              <text x="12" y="66" fill="#b8f0d9" font-family="'JetBrains Mono',monospace" font-size="10">AuT: 4 Conv2D &rarr; 16&times; ds</text>
+              <text x="12" y="80" fill="#39ff88" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700">out tokens &middot; 6.25 Hz</text>
+            </g>
+          </g>
+
+          <!-- THINKER (center) -->
+          <g transform="translate(300,60)">
+            <text x="0" y="0" fill="#00e5ff" font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" letter-spacing=".12em">[02] THINKER &middot; hybrid-attention + moe</text>
+            <g transform="translate(0,16)" filter="url(#F-glow-cyan)">
+              <rect x="0" y="0" width="280" height="196" rx="8" fill="url(#G-blue)" stroke="#00e5ff" stroke-width="1.3"/>
+            </g>
+            <g transform="translate(0,16)">
+              <text x="140" y="28" fill="#fff" font-family="'Space Grotesk',sans-serif" font-size="14" font-weight="800" text-anchor="middle">Hybrid-Attention MoE</text>
+              <text x="140" y="48" fill="#a5ecff" font-family="'JetBrains Mono',monospace" font-size="11" text-anchor="middle">MoE (from 3-Omni) + GDN (new in 3.5)</text>
+              <!-- MoE block -->
+              <g transform="translate(18,60)">
+                <rect width="124" height="40" rx="4" fill="rgba(0,229,255,.08)" stroke="rgba(0,229,255,.45)"/>
+                <text x="62" y="17" fill="#fff" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" text-anchor="middle">MoE layer</text>
+                <text x="62" y="31" fill="#a5ecff" font-family="'JetBrains Mono',monospace" font-size="9" text-anchor="middle">top-k expert route</text>
+              </g>
+              <g transform="translate(150,60)">
+                <rect width="112" height="40" rx="4" fill="rgba(157,123,255,.1)" stroke="rgba(157,123,255,.55)"/>
+                <text x="56" y="17" fill="#fff" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" text-anchor="middle">Gated Delta Net</text>
+                <text x="56" y="31" fill="#d1c4ff" font-family="'JetBrains Mono',monospace" font-size="9" text-anchor="middle">delta-state, O(n)</text>
+              </g>
+              <g transform="translate(18,108)">
+                <rect width="244" height="34" rx="4" fill="rgba(201,209,217,.06)" stroke="rgba(201,209,217,.3)"/>
+                <text x="122" y="15" fill="#e6edf3" font-family="'JetBrains Mono',monospace" font-size="10" text-anchor="middle">interleaved audio &middot; video &middot; text tokens</text>
+                <text x="122" y="28" fill="#a9afc3" font-family="'JetBrains Mono',monospace" font-size="9" text-anchor="middle">timestamp-as-text prefix on every AV patch</text>
+              </g>
+              <g transform="translate(18,150)">
+                <rect width="244" height="34" rx="4" fill="rgba(57,255,136,.05)" stroke="rgba(57,255,136,.35)"/>
+                <text x="122" y="15" fill="#39ff88" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" text-anchor="middle">chunked-prefill streaming</text>
+                <text x="122" y="28" fill="#b8f0d9" font-family="'JetBrains Mono',monospace" font-size="9" text-anchor="middle">TTFT: Flash 235 ms audio / Plus 435 ms</text>
+              </g>
+            </g>
+          </g>
+
+          <!-- TALKER (right) -->
+          <g transform="translate(620,60)">
+            <text x="0" y="0" fill="#ff3fa4" font-family="'JetBrains Mono',monospace" font-size="11" font-weight="700" letter-spacing=".12em">[03] TALKER &middot; hybrid-attention + rvq head</text>
+            <g transform="translate(0,16)" filter="url(#F-neon)">
+              <rect x="0" y="0" width="280" height="196" rx="8" fill="url(#G-pink)" stroke="#ff3fa4" stroke-width="1.3"/>
+            </g>
+            <g transform="translate(0,16)">
+              <text x="140" y="28" fill="#fff" font-family="'Space Grotesk',sans-serif" font-size="14" font-weight="800" text-anchor="middle">Hybrid-Attention MoE Talker</text>
+              <text x="140" y="48" fill="#ffc2dd" font-family="'JetBrains Mono',monospace" font-size="11" text-anchor="middle">new in 3.5: GDN + attention hybrid (MoE kept from 3-Omni)</text>
+              <g transform="translate(18,60)">
+                <rect width="244" height="34" rx="4" fill="rgba(255,63,164,.08)" stroke="rgba(255,63,164,.45)"/>
+                <text x="122" y="15" fill="#fff" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" text-anchor="middle">reads Thinker hidden states + text</text>
+                <text x="122" y="28" fill="#ffc2dd" font-family="'JetBrains Mono',monospace" font-size="9" text-anchor="middle">voice-desc system prompt, not speaker embedding</text>
+              </g>
+              <g transform="translate(18,100)">
+                <rect width="112" height="40" rx="4" fill="rgba(255,63,164,.12)" stroke="rgba(255,63,164,.55)"/>
+                <text x="56" y="17" fill="#fff" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" text-anchor="middle">RVQ base codebook</text>
+                <text x="56" y="31" fill="#ffc2dd" font-family="'JetBrains Mono',monospace" font-size="9" text-anchor="middle">1 idx / frame</text>
+              </g>
+              <g transform="translate(138,100)">
+                <rect width="124" height="40" rx="4" fill="rgba(255,176,32,.12)" stroke="rgba(255,176,32,.6)"/>
+                <text x="62" y="17" fill="#fff" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" text-anchor="middle">MTP residual head</text>
+                <text x="62" y="31" fill="#ffd9a8" font-family="'JetBrains Mono',monospace" font-size="9" text-anchor="middle">remaining codebooks</text>
+              </g>
+              <g transform="translate(18,148)">
+                <rect width="244" height="36" rx="4" fill="rgba(57,255,136,.08)" stroke="rgba(57,255,136,.45)"/>
+                <text x="122" y="16" fill="#39ff88" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" text-anchor="middle">Code2Wav &middot; causal ConvNet codec</text>
+                <text x="122" y="30" fill="#b8f0d9" font-family="'JetBrains Mono',monospace" font-size="9" text-anchor="middle">codec decode: 3 to 5 ms / frame (Table 2)</text>
+              </g>
+            </g>
+          </g>
+
+          <!-- ARIA band across Thinker -> Talker -->
+          <g transform="translate(40,368)">
+            <rect x="0" y="0" width="880" height="118" rx="8" fill="#120a18" stroke="#ff3fa4" stroke-opacity=".6" stroke-width="1.2"/>
+            <text x="14" y="22" fill="#ff3fa4" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" letter-spacing=".14em">[04] ARIA &middot; scheduling constraint over thinker-talker interleave</text>
+            <text x="14" y="44" fill="#e6edf3" font-family="'Space Grotesk',sans-serif" font-size="13" font-weight="700">one stream, one inequality</text>
+            <text x="14" y="62" fill="#ffc2dd" font-family="'JetBrains Mono',monospace" font-size="11">for every prefix k: (#speech_k / #text_k) &le; (#speech_total / #text_total)</text>
+            <text x="14" y="82" fill="#a9afc3" font-family="'JetBrains Mono',monospace" font-size="10">replaces: MFA alignments + dual-channel fixed-rate interleave</text>
+            <text x="14" y="100" fill="#a9afc3" font-family="'JetBrains Mono',monospace" font-size="10">effect: flexible across languages with 3x to 4x text/speech encoding-rate spreads</text>
+            <!-- little ratio bar -->
+            <g transform="translate(540,42)">
+              <rect x="0" y="0" width="300" height="16" rx="3" fill="rgba(255,63,164,.1)" stroke="rgba(255,63,164,.45)"/>
+              <rect x="0" y="0" width="200" height="16" rx="3" fill="rgba(255,63,164,.35)"/>
+              <text x="100" y="11" fill="#fff" font-family="'JetBrains Mono',monospace" font-size="9" font-weight="700" text-anchor="middle">cumulative speech : text</text>
+              <text x="250" y="11" fill="#ffc2dd" font-family="'JetBrains Mono',monospace" font-size="9" text-anchor="middle">global ceiling</text>
+            </g>
+            <g transform="translate(540,66)">
+              <text x="0" y="10" fill="#a9afc3" font-family="'JetBrains Mono',monospace" font-size="9">If the bar ever crosses the ceiling &rarr; emit a text token next,</text>
+              <text x="0" y="24" fill="#a9afc3" font-family="'JetBrains Mono',monospace" font-size="9">not a speech token. That's the whole scheduler.</text>
+            </g>
+          </g>
+
+          <!-- output to waveform -->
+          <g transform="translate(40,502)">
+            <rect x="0" y="0" width="880" height="44" rx="6" fill="url(#G-neon-green)" stroke="#39ff88" stroke-opacity=".55"/>
+            <text x="14" y="18" fill="#39ff88" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700" letter-spacing=".14em">[05] OUTPUT &middot; waveform stream</text>
+            <text x="14" y="34" fill="#b8f0d9" font-family="'JetBrains Mono',monospace" font-size="10">frame-by-frame synthesis &middot; Talker TTFC 54 to 95 ms (Plus) &middot; Overall first-packet 235 ms audio / 426 ms video (Flash)</text>
+          </g>
+
+          <!-- arrows -->
+          <g fill="none" stroke-width="1.6">
+            <path d="M 240 128 L 300 128" stroke="#c9d1d9" marker-end="url(#arrow)"/>
+            <path d="M 240 204 L 300 172" stroke="#00e5ff" marker-end="url(#A-accent)"/>
+            <path d="M 240 268 L 300 216" stroke="#39ff88" marker-end="url(#A-green)"/>
+            <path d="M 580 156 L 620 156" stroke="#ff3fa4" stroke-width="2" marker-end="url(#A-mag)"/>
+          </g>
+        </svg>
+      </div>
+      <p class="cap">Notice the ARIA band underneath both blocks: the scheduler is the interface between the Thinker's text stream and the Talker's speech stream. Before 3.5 that interface was MFA alignments plus a fixed interleave rate &mdash; a box that is gone in this diagram because ARIA collapses it to one inequality in the scheduler band.</p>
+
+      <h3 class="sub">The input encoders: AuT, SigLIP2, and the timestamp-as-text trick</h3>
+      <p>
+        The most opinionated piece of the input stack is <strong>AuT</strong>, the audio encoder trained from scratch on <span>40 million hours of audio-text pairs</span> generated by Qwen3-ASR (paper <a href="https://arxiv.org/abs/2604.15804" target="_blank" rel="noopener">&sect;2.2</a>). The design has exactly one surprise: the output token rate is 6.25 Hz, which comes from a specific cascade I want to walk through because it's a worked example of <em>why the acoustic rate matters</em>.
+      </p>
+      <div class="formula">
+        $$ 16\text{ kHz} \xrightarrow{\text{25 ms / 10 ms}} 100\,\text{frames/s mel} \xrightarrow{\text{4 Conv2D, }16\times} 6.25\,\text{audio tokens/s} $$
+      </div>
+      <p>
+        Walking the cascade: 25 ms window with 10 ms hop over a 16 kHz waveform produces 100 mel frames per second. Four stacked Conv2D blocks downsample 16 times (2&times;2&times;2&times;2), yielding 6.25 tokens per second, or 160 ms per audio token. The reason that 160 ms matters isn't efficiency for its own sake &mdash; <strong>6.25 Hz is slow enough for the Thinker's temporal position IDs to stay tight even when the context is ten hours of audio</strong>. At 100 Hz mel, a 10-hour clip would exhaust 3.6 million positions; at 6.25 Hz it's 225k, which fits inside the 262,144 S3 training window with room to spare. This is the pain-point the token-rate choice solves: without it, 256k-ctx audio isn't free, it requires either Terminus-style position-interpolation gymnastics or a rewritten position encoder. Qwen picked the boring path &mdash; bake the downsample into the encoder &mdash; and got to keep the position code ordinary.
+      </p>
+      <p>
+        The vision side uses <strong>SigLIP2</strong> (Table 1) with dynamic frame-rate sampling. The design choice I didn't see coming is the <em>timestamp-as-text prefix</em>: every video or audio-video patch gets a formatted text string with its absolute timestamp prepended, which replaces TMRoPE's absolute position IDs from <a href="https://arxiv.org/abs/2503.20215" target="_blank" rel="noopener">Qwen2.5-Omni</a>. The paper's justification is that TMRoPE produces <q>excessively sparse indices for visual patches from long video with audio inputs</q> (&sect;2.3), which weakens long-range modeling and needs uniformly distributed training samples across frame rates. Prepending a text timestamp pushes the burden onto the tokenizer &mdash; a few extra tokens per patch &mdash; and lets the model learn timecode arithmetic as ordinary token arithmetic. I like this move because it commits to the bit that the LLM is the timing model; no separate position engine, no fiddly rope extrapolation, just readable strings like <code>&lt;t=12.340s&gt;</code>. The counterfactual is the 3-Omni TMRoPE: if you kept it, long inputs at low FPS would need more uniform training data to hit the same long-range accuracy, and the paper flags that explicitly as why they moved.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================== ARIA =========================== -->
+  <section id="aria">
+  <!-- principle: ARIA: monotonic ratio replaces MFA + interleave -->
+    <div class="wrap">
+      <h2 class="sec">aria <span class="desc-inline">// one inequality replaces an alignment model</span></h2>
+      <p>
+        This is the section of the paper I re-read three times, because the idea is small enough that you can miss how much it does. <a href="https://arxiv.org/abs/2503.20215" target="_blank" rel="noopener">Qwen2.5-Omni</a>'s Talker generated two parallel streams &mdash; text tokens and speech tokens &mdash; aligned against one another using a Montreal Forced Aligner (MFA) pass over the training data to produce per-sentence alignments. At inference time you then interleave the two at a roughly fixed rate per language, hoping the rate is close enough to the true text/speech ratio for the current utterance. That's the pain-point: <strong>a fixed interleave rate is brittle across languages whose tokenizer-to-acoustic ratios differ by multiples</strong>. A BPE vocabulary optimised for Chinese-and-English (Qwen's shared tokenizer) compresses Chinese aggressively at one character per token or better, while lower-resource scripts &mdash; Hindi Devanagari, Thai, Vietnamese diacritics &mdash; fragment into many more text tokens per spoken syllable. Pick the Chinese ratio and Hindi is starved of text; pick the Hindi ratio and Chinese drowns in speech tokens with no text to anchor them. Paper Table 9 shows the failure mode concretely: <a href="https://arxiv.org/abs/2406.02430" target="_blank" rel="noopener">MiniMax-Speech</a> hits 82.8 WER on Vietnamese, 73.9 on Thai, 7.0 on Hindi custom-voice. Not good.
+      </p>
+
+      <h3 class="sub">The constraint, verbatim</h3>
+      <p>
+        ARIA (Adaptive Rate Interleave Alignment) does something almost insultingly simple. It unifies the two streams into one, and the scheduler's only rule &mdash; paper &sect;2.4, paraphrased and formalised &mdash; is:
+      </p>
+      <div class="formula">
+        $$ \forall\,k \in [1, N]:\quad \frac{S_{1:k}}{T_{1:k}} \;\le\; \frac{S_{\text{total}}}{T_{\text{total}}} $$
+      </div>
+      <p>
+        <span>Where $S_{1:k}$ is the number of speech tokens emitted in the first $k$ steps, $T_{1:k}$ is the text tokens so far, and the right-hand side is the item-level global ratio</span> &mdash; a number computed per utterance from the total speech and text budget the Talker expects to emit. That's it. No alignment model, no MFA pre-pass, no per-language interleave constant. The paper's own phrasing is <q>for any prefix of the generated sequence, the cumulative speech-to-text token ratio must not exceed the corresponding item-level global ratio</q>. It's a single monotonic inequality, and it teaches me something I want to say out loud: the reason fixed interleaving fails across languages is that it assumes a property (the instantaneous ratio) that isn't the constraint actually needed; the constraint you actually need is on the <em>cumulative</em> prefix, which is weaker and more permissive. Fixed interleave is the over-specified version of ARIA.
+      </p>
+
+      <div class="callout" data-variant="k">
+        <span class="t">the napkin version</span>
+        <p>ARIA says: go ahead and emit however many speech tokens make sense for the current phrase &mdash; <em>as long as, at every prefix, you have not yet outrun the eventual global speech-to-text ratio</em>. If your cumulative speech-to-text count ever crosses the item's eventual ratio, you owe text tokens next, not speech. That is the whole alignment mechanism, and it's language-agnostic because languages differ in the global ratio, not in the shape of the constraint. I think this is a clean enough idea to spread.</p>
+      </div>
+
+      <h3 class="sub">Why this beats dual-channel (and why it beats a fixed constant)</h3>
+      <p>
+        Two counterfactuals are worth running. First, the reason you can't just keep dual-channel and remove MFA: without alignments, you need some way to pair the two streams at training time, and absent alignments you'd be reduced to a global rate-matching loss &mdash; which is exactly a fixed-rate interleave in disguise. Second, the reason you can't use a fixed interleave constant per utterance: that constant is the item-level global ratio, and the problem is that on long utterances the instantaneous ratio oscillates around the mean. Fixed interleave at the mean either stalls speech (when the local ratio is below the mean) or races ahead of text (when local ratio is above). ARIA constrains only the <em>cumulative</em> ratio, which is monotonic in the prefix, which means speech can run ahead locally as long as it hasn't run ahead globally. That's the whole win.
+      </p>
+      <p>
+        The numbers back this up. On the <a href="https://arxiv.org/abs/2406.02430" target="_blank" rel="noopener">SEED-TTS</a> zero-shot benchmark, the Plus model lands a <span>WER of 1.26 on test-en, state of the art</span>, and 0.99 on test-zh (Table 8). More convincingly, on the cross-lingual voice-cloning benchmark (Table 11) the Chinese-to-Korean direction drops from CosyVoice 3's 14.4 to Qwen3.5-Omni's 4.03 &mdash; a 72% relative reduction. Korean's text encoding is roughly 2 syllables per token; Chinese is 1 character per character; zh-to-ko is exactly the encoding-rate-mismatch case where dual-channel + fixed interleave would fail, and ARIA's monotonic constraint lets the Talker reorder its own emission schedule on the fly. That's the principle landing as a number.
+      </p>
+      <p>
+        A thing I wanted from the paper but didn't get: an ablation removing ARIA while keeping the Hybrid-Attention block. The two come packaged, and you can't separate their contribution from the table alone. My best guess is that <em>ARIA is the bigger lever for the TTS benchmarks</em> because the WER gap between 3-Omni and 3.5-Omni on multilingual cross-lingual pairs is much larger than the gap on English or Chinese alone &mdash; and Korean/Hindi/Thai are where hybrid attention per se should help less than the alignment fix does. But that is a guess; the paper does not report it.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================== HYBRID-MOE =========================== -->
+  <section id="hybrid">
+  <!-- principle: GDN handles long-range; attention handles local -->
+    <div class="wrap">
+      <h2 class="sec">hybrid-attention <span class="desc-inline">// MoE is the 3-Omni legacy; GDN is the 3.5 bet</span></h2>
+      <p>
+        The term <em>Hybrid Attention Mixture-of-Experts</em> is one of those phrases that makes you think you know what's going on when you don't. Reading &sect;2.5 carefully: the "hybrid" is not MoE-over-attention or MoE-over-something. The hybrid is <strong>attention layers mixed with Gated Delta Net (GDN) layers</strong>, with MoE applied on top of both. MoE buys capacity without activation cost; GDN buys long-context scaling without KV-cache cost. They're orthogonal axes, and the paper's claim is that both Thinker and Talker are built out of the same hybrid block.
+      </p>
+      <p>
+        The reason GDN is the load-bearing choice here is mechanical, and it's easiest to see once you do the KV arithmetic on the one public data point we have: the Qwen3-Omni config at pinned SHA <code>26291f7</code>. 3-Omni's Thinker is <code>num_hidden_layers=48</code>, <code>num_key_value_heads=4</code>, <code>head_dim=128</code>. Full-attention KV at a 262,144-token context in bf16 is:
+      </p>
+      <div class="formula">
+        $$ \text{KV}_{\text{thinker}} = \underbrace{262{,}144}_{\text{seq}} \times \underbrace{4}_{\text{kv heads}} \times \underbrace{128}_{\text{head dim}} \times \underbrace{2}_{\text{K + V}} \times \underbrace{2\,\text{B}}_{\text{bf16}} \times \underbrace{48}_{\text{layers}} \;=\; 24\,\text{GiB} $$
+      </div>
+      <p>
+        That's the Thinker alone at batch 1. Stack the Talker (<code>num_hidden_layers=20</code>, <code>num_key_value_heads=2</code>, same <code>head_dim=128</code>) and add another 5 GiB. One concurrent stream already burns 29 GiB of KV cache; at concurrency 8 you're at 232 GiB, past four H100-80GBs before you've allocated a single weight. That is the wall GDN moves &mdash; the <em>delta-state recurrence</em> in Gated Delta Net maintains a fixed-size hidden state per layer instead of a grown-with-sequence cache, so long-context decoding stops reloading <em>O(seq)</em> tensors from HBM at each step. The paper phrases the win as "significantly reduces KV-cache I/O overhead in long-context inference, improving generation throughput and enabling higher serving concurrency" (&sect;2.5). The counterfactual, if you kept full attention on every layer: Table 2's concurrency-8 numbers for Flash audio (Thinker TTFT 103 ms, Talker TTFC 81 ms, steady-state TPOP 9.6 ms) are not feasible under the same parameter budget &mdash; you'd need much smaller context, or fewer concurrent users, or both. Numbers above are computed from the 3-Omni config at SHA <code>26291f7</code>; 3.5-Omni's exact layer count isn't public, so read them as the order-of-magnitude anchor, not a claim about 3.5's precise footprint.
+      </p>
+
+      <h3 class="sub">First-packet latency (Table 1) and how to read it</h3>
+      <p>
+        The paper publishes two families of numbers that together tell the serving story. First, end-to-end first-packet latency under a single concurrent stream (Table 1):
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Variant</th>
+              <th class="num">Audio input (ms)</th>
+              <th class="num">Video input (ms)</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Plus</td>
+              <td class="num">435</td>
+              <td class="num">651</td>
+              <td>Hybrid MoE Thinker + Talker, SigLIP2 vision, AuT audio</td>
+            </tr>
+            <tr>
+              <td>Flash</td>
+              <td class="num"><b class="best"><span>235</span></b></td>
+              <td class="num"><b class="best">426</b></td>
+              <td>Smaller-scale variant; same architecture, different parallelism</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Two quick reads. First, Flash is about 1.85&times; faster on audio first-packet than Plus, but only 1.53&times; faster on video &mdash; the video gap is smaller because the vision encoder is the same SigLIP2 block in both, and its latency is a fixed cost. Second, the 235 ms audio first-packet for Flash is the number to compare against any real-time voice assistant: under 300 ms is the threshold where users stop noticing the model thinking. Plus blows past that threshold, and the paper explicitly says the two variants use different deployment-time parallelism strategies, so horizontal comparison is a bit asterisk-y. What I do trust: the <em>ordering</em> of the table &mdash; Flash first, Plus second, video slower than audio &mdash; is architectural, not a parallelism artifact.
+      </p>
+
+      <p>
+        Second, Table 2 reports decomposed latencies across concurrency 1/4/8. The number I keep coming back to is <strong>Generation RTF</strong>: 0.178 / 0.211 / 0.257 for Flash at concurrency 1/4/8, and 0.187 / 0.267 / 0.334 for Plus. Real-Time Factor below 1.0 means the model generates audio faster than it plays; below 0.5 means roughly 2&times; real time; below 0.25 means 4&times;. Flash stays below 0.26 even at concurrency 8. That is entirely a function of GDN collapsing the KV-cache reload, because if you kept full attention on the Talker, Talker-TPOP would not scale this flatly with concurrency &mdash; it would be dominated by HBM bandwidth reading the full 64k-ish Talker context at every step.
+      </p>
+
+      <div class="callout" data-variant="ok">
+        <span class="t">why this block matters</span>
+        <p>Look at this the right way. MoE is a <em>capacity</em> decision that Qwen already made at the 3-Omni stage &mdash; 30B-A3B's <a href="https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Instruct/blob/26291f793822fb6be9555850f06dfe95f2d7e695/config.json" target="_blank" rel="noopener">public config.json</a> has <code>num_experts: 128</code> in both Thinker and Talker. GDN is a <em>long-context-serving</em> decision that's new at 3.5. Qwen3-Omni had plain attention in both blocks and a 64k-token <code>max_position_embeddings</code>, so its long-context audio-video story was bounded by HBM bandwidth on the KV cache. Qwen3.5-Omni slots GDN into the attention path alongside standard attention &mdash; what the paper calls "Hybrid-Attention" &mdash; and pushes the training context to 256k. That combination is what makes 10-hour audio, concurrency-8 serving, and Flash's 235 ms first-packet latency coexist. MoE was the 3-Omni decision; hybrid-attention is the 3.5 decision.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== TRAINING =========================== -->
+  <section id="training">
+  <!-- principle: MoE training inherits 3-Omni; ARIA is new -->
+    <div class="wrap">
+      <h2 class="sec">training <span class="desc-inline">// three stages, a token mix that's 46% audio</span></h2>
+      <p>
+        Pretraining is structured into three stages (&sect;3). The one I want to dig into is <strong>S2, the General Stage</strong>, because its token mix is where the audio-visual bet actually gets paid for.
+      </p>
+
+      <div class="mermaid">
+flowchart LR
+  S1["S1 Encoder Alignment<br/>LLM frozen<br/>train vision + audio adapters"]
+  S2["S2 General<br/>~4.29 T tokens<br/>seq-len 32,768"]
+  S3["S3 Long Context<br/>seq-len 262,144<br/>long-AV proportion up"]
+  PT["Post-training<br/>Thinker: 3 stages<br/>Talker: 4 stages"]
+  S1 --> S2 --> S3 --> PT
+      </div>
+      <p class="cap">Notice the jump from 32k to 262k between S2 and S3 &mdash; that's the long-context extension step, and the proportion of long audio and long video in the data climbs through the same curve. The arrow from S3 to post-training is where the model stops being a base and starts being an interactor.</p>
+
+      <h3 class="sub">The S2 token budget, and why audio dominates</h3>
+      <p>
+        The S2 stage is the main pretraining phase. The paper rounds the budget to "approximately 4 trillion tokens"; summing the five modality components actually gives 4.29 T. Keeping the raw numbers so the arithmetic is reproducible:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Modality</th>
+              <th class="num">Tokens (trillions)</th>
+              <th class="num">Share of 4.29 T</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Text</td><td class="num">0.92</td><td class="num">21%</td><td>Initialized from Qwen3.5</td></tr>
+            <tr><td>Audio</td><td class="num"><b class="best">1.99</b></td><td class="num"><b class="best">46%</b></td><td>Single biggest slice</td></tr>
+            <tr><td>Image</td><td class="num">0.95</td><td class="num">22%</td><td>Image-text pairs</td></tr>
+            <tr><td>Video</td><td class="num">0.14</td><td class="num">3%</td><td>Silent video</td></tr>
+            <tr><td>Video+Audio</td><td class="num">0.29</td><td class="num">7%</td><td>Audio-visual joint</td></tr>
+            <tr><td><em>Total</em></td><td class="num"><em>4.29</em></td><td class="num"><em>99%</em></td><td><em>Paper rounds to "approximately 4 T" (&sect;3)</em></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        <span>Almost half the pretraining budget is audio</span> &mdash; 46% of 4.29 T, paper &sect;3. I don't think I've seen a mix this audio-heavy in a general-purpose omnimodal pretraining run before, and the reason it works here is because the audio tokenizer compresses very aggressively. At 6.25 Hz, <strong>one audio token is 160 ms of signal</strong>, so 1.99 T audio tokens $= 1.99 \times 10^{12} / (6.25 \times 3600) \approx 88.4\,\text{M hours}$ of audio alone; add the 0.29 T audio-visual slice and you land at $\approx 101.3$ M hours of acoustic-bearing data. That lines up with the paper's <q>more than 100 million hours of audio-visual data</q> claim in &sect;1 &mdash; but only once you sum audio and audio-visual, not audio alone. The token count is not a free variable; it's the 6.25 Hz tokenizer choice from &sect;2.2 cashed out in training budget.
+      </p>
+      <p>
+        The asymmetry in video tokens (0.14 T silent, 0.29 T audio+video) is also worth naming. Silent video gets roughly half the budget of audio+video, which tells me the authors think the audio-visual <em>pairing</em> signal is twice as useful as the visual-only signal once you already have image-text pairs at scale. That is a bet, not a conclusion, and it's the sort of bet that will age one way or the other depending on what the next generation of open-world interactive benchmarks looks like.
+      </p>
+
+      <h3 class="sub">Post-training: Thinker's three stages and Talker's four</h3>
+      <p>
+        The post-training (&sect;4) is where I think the paper is least surprising but most well-described. Thinker goes through <strong>Specialist Distillation</strong> (SFT/RL from a suite of domain teachers, all fine-tuned from Qwen3.5 base), <strong>On-Policy Distillation</strong> (the text-conditioned response is used as the distillation target for the audio-conditioned query, closing a gap the paper names explicitly: answers under audio are worse than answers under text, and this stage re-aligns them), and <strong>Interaction-Aligned RL</strong> (reward signals designed around multi-turn interaction objectives to kill code-switching and persona drift).
+      </p>
+      <p>
+        Talker's four stages (paper &sect;4.2) are: General pretraining on 20M+ hours of multilingual speech, Long-Context CPT extending to 64k, DPO + GSPO for preference/stability, and a lightweight Speaker Fine-tuning stage. The one I want to call out is <a href="https://arxiv.org/abs/2507.18071" target="_blank" rel="noopener"><strong>GSPO</strong></a> (Zheng et al., 2025) &mdash; the algorithm's whole point is that it clips the importance ratio at the <em>sequence</em> level, where GRPO clips at the token level. The GSPO abstract says so explicitly: "GSPO defines the importance ratio based on sequence likelihood and performs sequence-level clipping, rewarding, and optimization... notably stabilizes MoE RL training." That last clause is why it's here. The Talker is a MoE policy emitting codec tokens across long rollouts; token-level clipping (GRPO-style) lets a single routing spike inside one rollout blow up the gradient. Stacking GSPO after DPO adds an MoE-stable RL pass on top of the preference-tuned policy. That's a read based on the GSPO abstract plus the paper's ordering; the 3.5-Omni paper doesn't publish the ablation.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================== EVALUATION =========================== -->
+  <section id="eval">
+  <!-- principle: ARIA improves audio-text sync, no retraining -->
+    <div class="wrap">
+      <h2 class="sec">evaluation <span class="desc-inline">// five rows worth explaining</span></h2>
+      <p>
+        The paper reports 215 audio/audio-visual subtasks (&sect;5). I am not going to walk you through 215 rows. The five below are the ones I think tell the real story; everything else is either a variant of one of these or confirming evidence.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Benchmark</th>
+              <th class="num">Qwen3.5-Omni-Plus</th>
+              <th class="num">Baseline</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>SEED-TTS test-en (WER &darr;)</td>
+              <td class="num"><b class="best">1.26</b></td>
+              <td class="num">1.39 (Qwen3-Omni)</td>
+              <td>Zero-shot TTS content consistency &mdash; new SOTA. test-zh is 0.99 vs 1.07, both ARIA wins.</td>
+            </tr>
+            <tr>
+              <td>Cross-Lingual zh-to-ko (mixed error rate &darr;)</td>
+              <td class="num"><b class="best">4.03</b></td>
+              <td class="num">14.4 (CosyVoice3)</td>
+              <td>72% relative reduction. The case dual-channel + MFA struggles most.</td>
+            </tr>
+            <tr>
+              <td>DailyOmni audio-visual (&uarr;)</td>
+              <td class="num"><b class="best">84.6</b></td>
+              <td class="num">82.7 (Gemini-3.1 Pro)</td>
+              <td>Plus passes Gemini-3.1 Pro on the main AV understanding benchmark (+1.9 pts); Flash trails at 81.8.</td>
+            </tr>
+            <tr>
+              <td>VoiceBench dialogue (&uarr;)</td>
+              <td class="num"><b class="best">93.1</b></td>
+              <td class="num">88.9 (Gemini-3.1 Pro)</td>
+              <td>End-to-end voice dialogue; +4.2 abs points over Gemini. Flash is 87.8.</td>
+            </tr>
+            <tr>
+              <td>OmniGAIA tool-use (&uarr;)</td>
+              <td class="num">57.2</td>
+              <td class="num"><b class="best">68.9</b> (Gemini-3.1 Pro)</td>
+              <td>Gemini wins the row (68.9); Plus trails at 57.2 and Flash at 33.9. Paper note: evaluated without thinking prompt and without &lt;answer&gt; formatting (DeepSeek-V3.2-Thinking judge). Plus is Qwen's best here but does not close the Gemini gap.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Two caveats on that table. First, the <strong>OmniGAIA row is where the honest-numbers story lives</strong> &mdash; Plus scores 57.2 and Gemini scores 68.9, so Plus does not close the tool-use gap. Flash (33.9) is well below both. The paper's footnote explains <q>OmniGAIA is evaluated without a thinking prompt and without &lt;answer&gt; formatting</q> with DeepSeek-V3.2-Thinking as the judge, which is an unusual eval shape, and the paper's own phrasing in &sect;5.1.4 is the modest <q>we also enhance the model's tool-use capability, achieving 57.2% on OmniGAIA</q> &mdash; not a beat-Gemini claim. Worth flagging because the release's headline narrative &mdash; that Qwen3.5-Omni matches or beats Gemini-3.1 Pro across the 215-benchmark sweep &mdash; makes it easy to assume row-wise dominance that doesn't hold on OmniGAIA. It isn't uniformly better, and I think that's an honest data point to keep in view. Second, the <strong>SEED-TTS comparison is against Qwen3-Omni itself</strong> &mdash; the 1.26-vs-1.39 delta is the 3.5-specific improvement over 3-Omni on zero-shot TTS, not an absolute SOTA claim relative to the whole field (though the paper asserts SOTA on test-en and the table supports it).
+      </p>
+
+      <p>
+        The number that most confirmed my read of ARIA is the cross-lingual zh-to-ko row. Korean and Chinese have the exact text/speech encoding-rate mismatch that dual-channel + fixed interleave handles badly, and the 72% relative reduction against CosyVoice 3 (which is itself a strong zh-focused system) is not a subtle improvement. <a href="https://arxiv.org/abs/2505.17589" target="_blank" rel="noopener">CosyVoice 3</a> is a 2025 system that already uses RVQ-based discrete tokens and a large-LM speech generator. The win here is alignment, not codec.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================== DRIFT =========================== -->
+  <section id="drift">
+  <!-- principle: API-only release breaks the open-source pattern -->
+    <div class="wrap">
+      <h2 class="sec">drift <span class="desc-inline">// paper says weights, code says API</span></h2>
+      <p>
+        I'm going to spend a section on this because it's the one place the paper and the public release shape disagree, and the disagreement is the kind of thing a deep-dive should be up-front about, not bury in a caveat. The paper describes Qwen3.5-Omni as a trained-and-released model in the Thinker-Talker family. The Qwen-Omni line has a precedent of openness: <a href="https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Instruct" target="_blank" rel="noopener">Qwen3-Omni-30B-A3B-Instruct</a>, <a href="https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Thinking" target="_blank" rel="noopener">-Thinking</a>, and <a href="https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Captioner" target="_blank" rel="noopener">-Captioner</a> all shipped under Apache 2.0 with config.json, safetensors, and modeling Python files. The natural expectation reading the 3.5 paper is that open weights would follow.
+      </p>
+      <p>
+        They haven't, at least not as of 2026-04-22. The only public code surface I can find for Qwen3.5-Omni is the Hugging Face Space demo, and what that demo implements is a DashScope API client, not the model. The relevant lines from <a href="https://huggingface.co/spaces/Qwen/Qwen3.5-Omni-Offline-Demo/blob/2888772e0aa651efa67c2ece0a3c5a23bcf91a50/app.py#L1182-L1184" target="_blank" rel="noopener">app.py L1182-L1184 at SHA <code>2888772e</code></a> read:
+      </p>
+      <pre><code class="language-python">model = OpenAI(
+    api_key=API_KEY,
+    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+)
+model_name = "qwen3.5-omni-plus"
+
+completion = model.chat.completions.create(
+    model=model_name,
+    messages=messages,
+    modalities=["text", "audio"],
+    audio={"voice": VOICE_OPTIONS[voice_choice], "format": "wav"},
+    extra_body={"top_k": top_k, "enable_search": True},
+    stream=True,
+    temperature=temperature,
+    top_p=top_p,
+)</code></pre>
+      <p>
+        That's the entire "model code". An OpenAI-compatible client pointed at DashScope; a model name string <span><code>qwen3.5-omni-plus</code></span>; modality flags; voice dictionary; streaming completion. No weights, no <code>modeling_qwen3_5_omni.py</code>, no <code>config.json</code>. The Flash tier is selected the same way through a different model name. I checked the HF repo listings under the <code>Qwen</code> org and there's no public <code>Qwen3.5-Omni-*</code> weight repo; there is the collection page linked from the blog but the individual model repos are either gated or non-existent at public URLs.
+      </p>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">drift &middot; paper vs public release</span>
+        <p>
+          <span class="paper-val">Paper &sect;5 reports architecture, training, and benchmark numbers for two variants, Plus and Flash [Paper &sect;2.5, &sect;5].</span>
+          <span class="code-val">Public release (as of 2026-04-22): API only. The only code that ships is <a href="https://huggingface.co/spaces/Qwen/Qwen3.5-Omni-Offline-Demo/blob/2888772e0aa651efa67c2ece0a3c5a23bcf91a50/app.py#L1182-L1184" target="_blank" rel="noopener"><code>app.py</code> at <code>blob/2888772e0aa651efa67c2ece0a3c5a23bcf91a50#L1182-L1184</code></a>, which pins <code>model_name = "qwen3.5-omni-plus"</code> against <code>https://dashscope.aliyuncs.com/compatible-mode/v1</code>. Compare to <a href="https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Instruct" target="_blank" rel="noopener">Qwen3-Omni-30B-A3B-Instruct</a>, which ships Apache-2.0 weights plus <code>modeling_qwen3_omni_moe_thinker.py</code>.</span>
+          <span class="resolution">I went with the public release. Every architecture number is traced to paper &sect;N.M, not to a released <code>config.json</code>, because no <code>config.json</code> is public for 3.5 &mdash; the param counts, expert counts, and num_hidden_layers are not independently verifiable. The 3-Omni <code>config.json</code> at pinned SHA is the closest predecessor baseline I can cite; I'd re-anchor against 3.5's own config the moment that ships.</span>
+        </p>
+      </div>
+
+      <p>
+        To make "implementation space is not verifiable" concrete, this is what a reader <em>can</em> and <em>cannot</em> cross-check. The left column is 3-Omni's shipped <code>config.json</code> at SHA <code>26291f7</code> &mdash; a runnable, copy-pastable source of truth. The right column is what 3.5's paper prose asserts about the same fields. The last column names the rows a cross-check would flag the moment 3.5's config ships.
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>3-Omni config.json @ <code>26291f7</code></th>
+              <th>3.5-Omni (paper prose)</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>max_position_embeddings</code> (both blocks)</td>
+              <td class="num"><code>65536</code></td>
+              <td class="num"><code>262144</code> (&sect;1, &sect;3 S3)</td>
+              <td>Paper-only; no config to verify</td>
+            </tr>
+            <tr>
+              <td>Attention path (both blocks)</td>
+              <td>full attention, 48 layers Thinker / 20 Talker</td>
+              <td>Hybrid-Attention = attention + Gated Delta Net (&sect;2.5)</td>
+              <td>Paper-only; no <code>layer_types</code> to verify</td>
+            </tr>
+            <tr>
+              <td><code>num_experts</code>, <code>num_experts_per_tok</code></td>
+              <td><code>128</code> / <code>8</code> Thinker; <code>128</code> / <code>6</code> Talker</td>
+              <td>"MoE designs" retained (&sect;2.5); counts not stated</td>
+              <td>Inherited-from-3-Omni is the strongest read</td>
+            </tr>
+            <tr>
+              <td>Talker input</td>
+              <td>dual-channel (text + codec)</td>
+              <td>single-stream ARIA (&sect;2.4)</td>
+              <td>Paper-only; new mechanism, no code</td>
+            </tr>
+            <tr>
+              <td>Audio encoder frame rate</td>
+              <td>AuT, 6.25 Hz (via <code>audio_config</code>: 128 mel, 32 encoder layers, 16&times; downsample)</td>
+              <td>AuT, 6.25 Hz (&sect;2.2)</td>
+              <td>Consistent across both</td>
+            </tr>
+            <tr>
+              <td>Speech output path</td>
+              <td>RVQ (16 quantisers, <code>codebook_size: 2048</code>) + Code2Wav 8-layer causal convnet</td>
+              <td>Same (&sect;2, unchanged from 3-Omni)</td>
+              <td>Consistent across both</td>
+            </tr>
+            <tr>
+              <td><code>rope_theta</code></td>
+              <td><code>1000000</code></td>
+              <td>Not stated</td>
+              <td>Paper silent; 3-Omni value is the best-guess baseline</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Two things worth being careful about. First, this is not a moral judgment on Qwen &mdash; API-only releases have reasons (safety review, partner commitments, infrastructure readiness). Second, for any reader trying to cross-check architecture numbers, it has a concrete effect: the paper-vs-code drift that normally anchors a thinklab deep-dive doesn't exist yet, because there's no code to drift from. What <em>can</em> be said is that everything the paper reports about the design is internally consistent across &sect;2 and &sect;5, and everything that cross-references against 3-Omni's actual modeling code (AuT frame rate, RVQ+MTP speech path, timestamp-as-text patching) is consistent with the predecessor. The <em>design</em> space is verifiable; the <em>implementation</em> space &mdash; layer counts, expert parallelism, KV head ratios, RoPE theta, any 3.5-specific drift from 3-Omni &mdash; is not, because the implementation is behind an API.
+      </p>
+      <p>
+        Practical consequence for the reader: if you want to build on this model, you build on the API. If you want to build on the architecture, you build on Qwen3-Omni (which is open) and port the 3.5-specific ideas &mdash; Talker-MoE, ARIA, GDN-in-hybrid &mdash; from the paper yourself. That's not a nothing path, because ARIA is a few dozen lines of scheduling code, Talker-MoE is a config change to an existing MoE Thinker, and GDN is already implemented in the Qwen3.5 base. The paper reads, in other words, like a research preview of an architecture that hasn't been released as code but is reproducible from the text for anyone with 3-Omni's scaffolding.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================== TAKEAWAYS =========================== -->
+  <section id="takeaways">
+    <div class="wrap">
+      <h2 class="sec">takeaways <span class="desc-inline">// signed off</span></h2>
+      <div class="grid c2">
+        <div class="card">
+          <h4>[01] ARIA is the paper's signature idea</h4>
+          <p>
+            One monotonic inequality replacing an alignment model is the kind of move that spreads. I think we'll see it (or a relabelled version) in other speech + text codec models within a year &mdash; it works for the same reason RoPE worked: it's a weaker constraint than the thing it replaces, which means it's more permissive, which means the model has more freedom to find the right schedule. My read: watch for ARIA-style ratio constraints showing up in open-weights TTS systems next. CosyVoice 4 is the obvious place.
+          </p>
+        </div>
+        <div class="card">
+          <h4>[02] Hybrid-Attention = GDN + attention is the serving bet</h4>
+          <p>
+            MoE for capacity was 3-Omni's contribution; its public <code>config.json</code> already has <code>num_experts: 128</code> in both Thinker and Talker. GDN-alongside-attention is the 3.5 move, and it's a production-serving idea that Qwen3.5 base already had. The 3.5-Omni contribution is applying the hybrid block to both Thinker and Talker and extending the training context from 64k to 256k on top of it. This will get copied fast because the win is straightforward: you can serve 10 hours of audio at concurrency 8 without blowing the KV budget. Competitors who haven't yet moved their speech decoder off full attention will feel it.
+          </p>
+        </div>
+        <div class="card">
+          <h4>[03] API-only is a step backward from 3-Omni's openness</h4>
+          <p>
+            I want to say this plainly rather than hide it in a footnote: shipping a paper's worth of architecture detail without the weights that let the open community verify and extend it is a regression from <a href="https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Instruct" target="_blank" rel="noopener">Qwen3-Omni</a>'s Apache-2.0 release. The paper's benchmark story is still legitimate; I just think the line between "technical report" and "product announcement" matters more when the weights aren't there to bridge them. I would trade a handful of the 215 SOTA subtasks for a public <code>config.json</code>.
+          </p>
+        </div>
+        <div class="card">
+          <h4>[04] Watch the S2 token mix</h4>
+          <p>
+            Forty-six percent of the main pretraining budget going to audio (1.99 T of 4.29 T total) is, to my knowledge, the most audio-dominant mix in a general-purpose omnimodal pretraining run. The fact that it co-occurs with top-line text and vision benchmarks remaining at parity with the text-only Qwen3.5-Plus-Instruct is the surprising half. I would bet on other omnimodal labs moving their mixes audio-ward in the next generation &mdash; either because Qwen showed it doesn't hurt text, or because it's just obvious now that 6.25 Hz audio tokens are cheap enough to index into.
+          </p>
+        </div>
+      </div>
+
+      <div class="callout" data-variant="ok" style="margin-top:28px">
+        <span class="t">// end of notebook</span>
+        <p>Qwen3.5-Omni is two independent bets ridden in one saddle: ARIA for alignment, Hybrid-Attention for long-context serving. The bets are clean; the release shape isn't, and that's the asymmetry worth naming. If 3-Omni was the open-weights generation that proved Thinker-Talker MoE was real, 3.5-Omni is the paper that proves the scaffold has two more levers &mdash; one monotonic inequality and one attention-path hybrid. I hope the next generation pulls them in public code.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== REFERENCES =========================== -->
+  <section id="references">
+    <div class="wrap">
+      <h2 class="sec">references</h2>
+      <ul>
+        <li>Paper &middot; <a href="https://arxiv.org/abs/2604.15804" target="_blank" rel="noopener">Qwen Team, Qwen3.5-Omni Technical Report (arXiv:2604.15804v2, 2026)</a></li>
+        <li>Predecessor paper &middot; <a href="https://arxiv.org/abs/2509.17765" target="_blank" rel="noopener">Qwen Team, Qwen3-Omni Technical Report (arXiv:2509.17765, 2025)</a></li>
+        <li>Grand-predecessor paper &middot; <a href="https://arxiv.org/abs/2503.20215" target="_blank" rel="noopener">Xu et al., Qwen2.5-Omni Technical Report (arXiv:2503.20215, 2025)</a></li>
+        <li>Public code surface &middot; <a href="https://huggingface.co/spaces/Qwen/Qwen3.5-Omni-Offline-Demo/blob/2888772e0aa651efa67c2ece0a3c5a23bcf91a50/app.py" target="_blank" rel="noopener">Qwen3.5-Omni Offline Demo <code>app.py</code> at <code>blob/2888772e</code></a></li>
+        <li>Live demo &middot; <a href="https://huggingface.co/spaces/Qwen/Qwen3.5-Omni-Online-Demo" target="_blank" rel="noopener">Qwen3.5-Omni Online Demo</a></li>
+        <li>Open-weights predecessor &middot; <a href="https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Instruct" target="_blank" rel="noopener">Qwen/Qwen3-Omni-30B-A3B-Instruct</a> (Apache 2.0)</li>
+        <li>Zero-shot TTS baseline &middot; <a href="https://arxiv.org/abs/2406.02430" target="_blank" rel="noopener">Anastassiou et al., SEED-TTS (arXiv:2406.02430, 2024)</a></li>
+        <li>Multilingual TTS baseline &middot; <a href="https://arxiv.org/abs/2505.17589" target="_blank" rel="noopener">Du et al., CosyVoice 3 (arXiv:2505.17589, 2025)</a></li>
+        <li>Post-training &middot; <a href="https://arxiv.org/abs/2507.18071" target="_blank" rel="noopener">Zheng et al., Group Sequence Policy Optimization / GSPO (arXiv:2507.18071, 2025)</a></li>
+        <li>Long-context recurrence &middot; <a href="https://arxiv.org/abs/2412.06464" target="_blank" rel="noopener">Yang et al., Gated Delta Networks (arXiv:2412.06464, 2024)</a></li>
+        <li>3-Omni config for cross-check &middot; <a href="https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Instruct/blob/26291f793822fb6be9555850f06dfe95f2d7e695/config.json" target="_blank" rel="noopener">Qwen3-Omni config.json at SHA <code>26291f7</code></a></li>
+      </ul>
+    </div>
+  </section>
+
+</div><!-- /.shell -->
+
+<script src="../../assets/theme.js"></script>
+</body>
+</html>

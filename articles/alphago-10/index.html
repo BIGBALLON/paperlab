@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="Ten years after AlphaGo beat Lee Sedol, the headline is still Move 37 — but the mechanism was a closed loop of policy, value, MCTS, and self-play. The decade since has been a monotonic shedding of priors: human games (AlphaGo Lee) → rules only (AlphaZero) → rules learned (MuZero) → natural-language reward (AlphaProof, Gemini Deep Think). Every frontier system in 2026 runs some version of that loop; the only difference is which slot the prior lives in." />
+<meta name="theme-color" content="#05070a" />
+<title>AlphaGo at 10 · The Loop That Shed Its Priors — thinklab</title>
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+<link rel="canonical" href="/articles/alphago-10/" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" /></noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" />
+<link rel="stylesheet" href="../../assets/theme.css" />
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="(window.requestIdleCallback||function(f){return setTimeout(f,0)})(function(){renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});});"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+</head>
+<body class="page-article">
+
+<a class="home-btn" href="../../" aria-label="Back to index"><span class="arrow">←</span><span class="label">cd&nbsp;~</span></a>
+<div id="scroll-progress" aria-hidden="true"></div>
+<button id="to-top" aria-label="back to top" title="back to top">↑</button>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="G-blue"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#1b2b52"/><stop offset="1" stop-color="#0a1124"/></linearGradient>
+    <linearGradient id="G-violet" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#2e1a55"/><stop offset="1" stop-color="#180c32"/></linearGradient>
+    <linearGradient id="G-teal"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0d3d33"/><stop offset="1" stop-color="#062018"/></linearGradient>
+    <linearGradient id="G-orange" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4a2414"/><stop offset="1" stop-color="#22100a"/></linearGradient>
+    <linearGradient id="G-pink"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4e1a33"/><stop offset="1" stop-color="#26091a"/></linearGradient>
+    <linearGradient id="G-slate"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#11162a"/><stop offset="1" stop-color="#070a14"/></linearGradient>
+    <linearGradient id="G-green"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0b3a22"/><stop offset="1" stop-color="#051f12"/></linearGradient>
+    <pattern id="P-grid" width="22" height="22" patternUnits="userSpaceOnUse">
+      <path d="M 22 0 L 0 0 0 22" fill="none" stroke="#1a2338" stroke-width=".5"/>
+      <circle cx="0" cy="0" r="1" fill="#2a3458" opacity=".55"/>
+    </pattern>
+    <pattern id="P-go" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#2a3458" stroke-width=".6"/>
+    </pattern>
+    <marker id="A-green"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#39ff88"/></marker>
+    <marker id="A-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#00e5ff"/></marker>
+    <marker id="A-mag"    viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ff3fa4"/></marker>
+    <marker id="A-amber"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffd166"/></marker>
+    <marker id="A-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9d7bff"/></marker>
+    <filter id="F-glow">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+</svg>
+
+<div class="shell">
+
+  <!-- =========================== HERO =========================== -->
+  <header class="hero">
+    <div class="hero-term">
+      <div class="term-bar">
+        <span class="term-dot d-r"></span>
+        <span class="term-dot d-y"></span>
+        <span class="term-dot d-g"></span>
+        <span class="term-title">~/deepmind/alphago &mdash; loop.py</span>
+      </div>
+      <div class="term-body">
+        <div class="term-prompt">
+          <span class="path">reader@thinklab</span>:<span class="cmd">~/alphago-10</span>$ cat nature2016.pdf nature2017.pdf science2018.pdf | render --theme=retrospective<span class="cursor"></span>
+        </div>
+        <h1>AlphaGo at 10 &middot; The Loop That Shed Its Priors</h1>
+        <p class="sub">
+          <span class="line">Ten years ago this spring, a program beat Lee Sedol 4&ndash;1 in Seoul. Two hundred million people watched. The <a href="https://deepmind.google/blog/10-years-of-alphago/" target="_blank" rel="noopener">DeepMind retrospective</a> makes the anniversary case at the level of narrative &mdash; Move 37, the spark, the path to AGI. I want to make it at the level of mechanism.</span>
+          <span class="line">The 2016 headline was <em>creativity</em>. The 2026 headline, re-read with ten years of hindsight, is <em>compression of priors</em>. AlphaGo's real invention wasn't a neural network or a tree search &mdash; both existed &mdash; it was a <strong>closed loop</strong> in which policy, value, search, and self-play <em>produce each other</em>, and each loop around the track <em>discards</em> something the previous version required. Human games went first (Zero). Then domain engineering (AlphaZero). Then the rules themselves (MuZero). The system became more general by owning less.</span>
+        </p>
+        <div class="hero-badges">
+          <span class="hero-badge" data-variant="green">Lee Sedol · 4&minus;1 · Mar 2016</span>
+          <span class="hero-badge" data-variant="cyan">Move 37 · p &asymp; 1/10,000</span>
+          <span class="hero-badge" data-variant="magenta">Move 78 · p &asymp; 1/10,000</span>
+          <span class="hero-badge" data-variant="violet">Zero · 3&nbsp;days &rarr; &gt; AlphaGo Lee</span>
+          <span class="hero-badge" data-variant="amber">AlphaZero · 24h · chess / shogi / Go</span>
+        </div>
+        <div class="hero-toc">
+          <a href="#thesis">thesis</a>
+          <a href="#mechanism">the loop</a>
+          <a href="#puct">puct + self-improvement</a>
+          <a href="#moves">37 and 78</a>
+          <a href="#shedding">the shedding</a>
+          <a href="#inversion">compute-inversion</a>
+          <a href="#echo">the echo</a>
+          <a href="#open">still open</a>
+          <a href="#takeaways">takeaways</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================== TL;DR =========================== -->
+  <div class="callout" data-variant="k">
+    <span class="t">TL;DR</span>
+    <p>AlphaGo (<a href="https://www.nature.com/articles/nature16961" target="_blank" rel="noopener">Silver et al., <em>Nature</em> 529, 28 Jan 2016</a>) combined a supervised-learning policy network trained on <b>~30M expert moves</b>, a reinforcement-learning policy refined by self-play, a value network trained to predict the self-play winner, and <b>Monte-Carlo Tree Search (MCTS)</b> guided by a PUCT selection rule (§Methods, Eqs. 1&ndash;3). The Lee Sedol match was played by the "AlphaGo Lee" build on <b>48 TPUs</b>, Elo ≈ <b>3,739</b> (Wikipedia config table, citing Silver et al. <em>Nature</em> 2017). One loop turn later, <b>AlphaGo Zero</b> (<a href="https://www.nature.com/articles/nature24270" target="_blank" rel="noopener">Silver et al., <em>Nature</em> 550, 19 Oct 2017</a>) dropped the SL corpus &mdash; self-play alone, merged policy+value into one tower, and <em>exceeded</em> AlphaGo Lee by Elo after <b>~3 days</b>, reaching <b>Elo 5,185</b> in 40 days on 4 TPUs. <b>AlphaZero</b> (<a href="https://arxiv.org/abs/1712.01815" target="_blank" rel="noopener">Silver et al., arXiv:1712.01815, Dec 2017</a> &rarr; <em>Science</em> 362, 2018) dropped Go-specific input planes and symmetry augmentation; same algorithm mastered chess, shogi, and Go in <b>24 hours</b>. <b>MuZero</b> (<a href="https://www.nature.com/articles/s41586-020-03051-4" target="_blank" rel="noopener">Schrittwieser et al., <em>Nature</em> 588, Dec 2020</a>) dropped the rules themselves &mdash; search in a <em>learned</em> latent dynamics model, no simulator call inside the tree. The through-line is the loop shedding priors: <b>human data &rarr; domain symmetries &rarr; environment rules &rarr; (today) natural-language verifier</b>. <b>AlphaProof</b> + <b>AlphaGeometry&nbsp;2</b> reached IMO silver-medal level in <a href="https://deepmind.google/discover/blog/ai-solves-imo-problems-at-silver-medal-level/" target="_blank" rel="noopener">July 2024</a>; <a href="https://deepmind.google/discover/blog/advanced-version-of-gemini-with-deep-think-officially-achieves-gold-medal-standard-at-the-international-mathematical-olympiad/" target="_blank" rel="noopener">Gemini Deep Think hit gold at IMO&nbsp;2025</a> using the same search-plus-reasoner architecture, graded in natural language. The 2016 magic trick was Move&nbsp;37. The 2016&ndash;2026 <em>mechanism</em> was the loop, and what it has been shedding.</p>
+  </div>
+
+  <!-- =========================== THESIS =========================== -->
+  <section id="thesis">
+    <div class="wrap">
+      <h2 class="sec">thesis <span class="desc-inline">// what was actually invented in 2016</span></h2>
+
+      <p>Every retrospective on AlphaGo reaches for <em>Move 37</em>. Game 2 of the Lee Sedol match, a shoulder hit on the fifth line of the right side: commentators initially read it as a mistake, professional Go players around the room quietly revised their priors as the game continued, and a hundred moves later the stone was exactly where AlphaGo needed it. DeepMind's own retrospective reports that <a href="https://deepmind.google/research/alphago/" target="_blank" rel="noopener">the policy network estimated that move's probability under expert play at ~1/10,000</a> &mdash; the canonical number the "creative AI" narrative has leaned on ever since.</p>
+
+      <p>That framing &mdash; <em>a creative machine</em> &mdash; is what made the 2016 news cycle. It is also what makes AlphaGo feel, ten years on, like a period piece: we moved on to language models, they are creative at volume, case closed. I think that reading misses the actual contribution, and misses why everything from OpenAI's o-series to <a href="https://deepmind.google/discover/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/" target="_blank" rel="noopener">DeepMind's AlphaEvolve</a> to RLHF post-training descends from it.</p>
+
+      <div class="callout" data-variant="k" style="margin-top:10px">
+        <span class="t">claim</span>
+        <p>AlphaGo's contribution wasn't a neural network (a 13-layer convnet, 2016-grade), wasn't an SL corpus (KGS had existed for years), and wasn't MCTS (Crazy Stone and Zen already used it). The contribution was <em>gluing them into a closed loop</em> in which (i) the policy provides search priors, (ii) MCTS turns those priors into <em>improved</em> action distributions via planning, (iii) the improvements are distilled back into the policy, (iv) the value network scores leaves so you can stop rolling out, and (v) self-play generates the data all of this trains on. Every one of those arrows was separately known. Closing the loop &mdash; and showing that the loop <em>iteratively improves</em> &mdash; is the invention. The subsequent decade of DeepMind work is most cleanly read as <em>which slot in this loop can be filled from less</em>.</p>
+      </div>
+
+      <p>The rest of this piece takes that loop apart, names what each slot does, watches what each successor system <em>removed</em> from it, and argues that the systems that ate the world after 2020 &mdash; ChatGPT-style RLHF, o1-style inference-time search, agentic math provers, evolutionary code search &mdash; all run this loop with different priors in different slots. Sources: I read the three Nature papers (2016, 2017, 2020) and the AlphaZero arXiv end-to-end; pulled move counts and game dates from <a href="https://en.wikipedia.org/wiki/AlphaGo" target="_blank" rel="noopener">the Wikipedia article</a> for cross-checks; confirmed Elo and hardware from its configuration table, which itself cites Silver et al. 2017. Where a number is paper-reported, blog-reported, my arithmetic, or unverifiable, I tag it.</p>
+    </div>
+  </section>
+
+  <!-- =========================== MECHANISM =========================== -->
+  <section id="mechanism">
+    <div class="wrap">
+      <h2 class="sec">the loop <span class="desc-inline">// four networks, one tree, one tape of self-play</span></h2>
+
+      <p>The 2016 system has four trained components and one non-trained one (Silver et al. 2016, Fig. 1). Read the figure <em>left-to-right for training, bottom for search</em>: a supervised policy $p_\sigma$ (13-layer CNN, <b>57.0% top-1</b> on ~30M KGS 6&ndash;9 dan moves) and a fast hand-crafted rollout $p_\pi$ (~1000× faster) are both fitted off the human corpus; an RL policy $p_\rho$ is initialized from $p_\sigma$ and refined by REINFORCE on $\pm 1$ self-play outcomes; the self-play games become a 30M-position tape (one position per game, to decorrelate) that trains the value network $v_\theta$; at inference a single MCTS composes $p_\sigma$ as tree prior, $v_\theta$ as leaf evaluator, and $p_\pi$ as rollout, picks the most-visited root child, and played games feed back into the tape.</p>
+
+      <div class="fig-wrap accent-cyan">
+        <div class="fig-bar">
+          <span class="fig-bar-title">ALPHAGO 2016 · FIVE SLOTS, ONE LOOP</span>
+          <span class="fig-bar-id">fig: flow/2016</span>
+        </div>
+        <svg viewBox="0 0 1200 460" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AlphaGo 2016 dependency graph: the human corpus trains the SL policy p_sigma and the fast rollout policy p_pi; p_sigma initializes the RL policy p_rho which self-plays to produce the 30M-game tape; the tape trains the value network v_theta; MCTS at inference composes p_sigma as prior, v_theta as leaf evaluator, and p_pi as rollout, producing the played move; the move appends to the self-play tape and closes the loop.">
+          <rect x="0" y="0" width="1200" height="460" fill="url(#P-grid)" opacity=".45"/>
+
+          <!-- header bar -->
+          <g>
+            <rect x="20" y="8" width="1160" height="22" rx="3" fill="#0a0e14" stroke="rgba(0,229,255,.22)"/>
+            <text x="36" y="23" fill="#00e5ff" font-size="10" font-weight="700" letter-spacing=".14em">◆ TRAINING (top) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ INFERENCE · MCTS (bottom)</text>
+            <text x="1164" y="23" fill="#8b949e" font-size="10" text-anchor="end" letter-spacing=".06em">slots 01–05</text>
+          </g>
+
+          <!-- column labels -->
+          <text x="115" y="55" fill="#6e7681" font-size="9" font-weight="700" letter-spacing=".16em" text-anchor="middle">DATA</text>
+          <text x="335" y="55" fill="#6e7681" font-size="9" font-weight="700" letter-spacing=".16em" text-anchor="middle">SL · SLOT 01</text>
+          <text x="565" y="55" fill="#6e7681" font-size="9" font-weight="700" letter-spacing=".16em" text-anchor="middle">RL · SLOT 03</text>
+          <text x="795" y="55" fill="#6e7681" font-size="9" font-weight="700" letter-spacing=".16em" text-anchor="middle">TAPE (produced)</text>
+          <text x="1015" y="55" fill="#6e7681" font-size="9" font-weight="700" letter-spacing=".16em" text-anchor="middle">VALUE · SLOT 04</text>
+
+          <!-- ============ TRAINING ROW (y=65-165) ============ -->
+          <!-- HUMAN CORPUS -->
+          <g transform="translate(30,65)">
+            <rect x="0" y="0" width="170" height="100" rx="8" fill="url(#G-slate)" stroke="rgba(139,148,158,.55)"/>
+            <text x="85" y="22" text-anchor="middle" fill="#c9d1d9" font-size="11" font-weight="700" letter-spacing=".1em">HUMAN CORPUS</text>
+            <text x="85" y="46" text-anchor="middle" fill="#e6edf3" font-size="13" font-family="'JetBrains Mono',monospace" font-weight="700">~30M moves</text>
+            <text x="85" y="66" text-anchor="middle" fill="#8b949e" font-size="10">KGS 6–9 dan games</text>
+            <text x="85" y="84" text-anchor="middle" fill="#6e7681" font-size="9">dropped by Zero ✗</text>
+          </g>
+
+          <!-- SL arrow -->
+          <path d="M 200 115 L 248 115" fill="none" stroke="#00e5ff" stroke-width="1.8" marker-end="url(#A-accent)"/>
+          <text x="224" y="108" text-anchor="middle" fill="#00e5ff" font-size="9" font-weight="700" letter-spacing=".1em">SUPERVISED</text>
+
+          <!-- SL POLICY p_σ -->
+          <g transform="translate(250,65)">
+            <rect x="0" y="0" width="170" height="100" rx="8" fill="url(#G-blue)" stroke="#00e5ff" stroke-opacity=".65"/>
+            <text x="85" y="22" text-anchor="middle" fill="#00e5ff" font-size="11" font-weight="700" letter-spacing=".1em">p<tspan font-size="9" baseline-shift="sub">σ</tspan> SL POLICY</text>
+            <text x="85" y="44" text-anchor="middle" fill="#d9f2ff" font-size="13" font-family="'JetBrains Mono',monospace" font-weight="700">57.0% top-1</text>
+            <text x="85" y="62" text-anchor="middle" fill="#a4c9e8" font-size="10">13-layer CNN</text>
+            <text x="85" y="80" text-anchor="middle" fill="#7eaad1" font-size="9">seeds tree prior P</text>
+          </g>
+
+          <!-- init arrow -->
+          <path d="M 420 115 L 478 115" fill="none" stroke="#9d7bff" stroke-width="1.8" marker-end="url(#A-violet)"/>
+          <text x="449" y="108" text-anchor="middle" fill="#9d7bff" font-size="9" font-weight="700" letter-spacing=".1em">INIT</text>
+
+          <!-- RL POLICY p_ρ -->
+          <g transform="translate(480,65)">
+            <rect x="0" y="0" width="170" height="100" rx="8" fill="url(#G-violet)" stroke="#9d7bff" stroke-opacity=".65"/>
+            <text x="85" y="22" text-anchor="middle" fill="#9d7bff" font-size="11" font-weight="700" letter-spacing=".1em">p<tspan font-size="9" baseline-shift="sub">ρ</tspan> RL POLICY</text>
+            <text x="85" y="44" text-anchor="middle" fill="#e2d7ff" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">REINFORCE ±1</text>
+            <text x="85" y="62" text-anchor="middle" fill="#c7b5ff" font-size="10">self-play vs prior iters</text>
+            <text x="85" y="80" text-anchor="middle" fill="#a590d4" font-size="9">data generator only</text>
+          </g>
+
+          <!-- self-play arrow -->
+          <path d="M 650 115 L 708 115" fill="none" stroke="#ff3fa4" stroke-width="1.8" marker-end="url(#A-mag)"/>
+          <text x="679" y="108" text-anchor="middle" fill="#ff3fa4" font-size="9" font-weight="700" letter-spacing=".1em">SELF-PLAY</text>
+
+          <!-- TAPE -->
+          <g transform="translate(710,65)">
+            <rect x="0" y="0" width="170" height="100" rx="8" fill="url(#G-pink)" stroke="#ff3fa4" stroke-opacity=".55"/>
+            <text x="85" y="22" text-anchor="middle" fill="#ff3fa4" font-size="11" font-weight="700" letter-spacing=".1em">SELF-PLAY TAPE</text>
+            <text x="85" y="44" text-anchor="middle" fill="#ffd7e6" font-size="13" font-family="'JetBrains Mono',monospace" font-weight="700">30M games</text>
+            <text x="85" y="62" text-anchor="middle" fill="#ffb3d1" font-size="10">1 position / game</text>
+            <text x="85" y="80" text-anchor="middle" fill="#d99ab2" font-size="9">to decorrelate</text>
+          </g>
+
+          <!-- regress arrow -->
+          <path d="M 880 115 L 938 115" fill="none" stroke="#39ff88" stroke-width="1.8" marker-end="url(#A-green)"/>
+          <text x="909" y="108" text-anchor="middle" fill="#39ff88" font-size="9" font-weight="700" letter-spacing=".1em">REGRESS z</text>
+
+          <!-- VALUE v_θ -->
+          <g transform="translate(940,65)">
+            <rect x="0" y="0" width="170" height="100" rx="8" fill="url(#G-green)" stroke="#39ff88" stroke-opacity=".75"/>
+            <text x="85" y="22" text-anchor="middle" fill="#39ff88" font-size="11" font-weight="700" letter-spacing=".1em">v<tspan font-size="9" baseline-shift="sub">θ</tspan> VALUE NET</text>
+            <text x="85" y="44" text-anchor="middle" fill="#d8ffe6" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">P(win | s)</text>
+            <text x="85" y="62" text-anchor="middle" fill="#9eff9e" font-size="10">leaf evaluator</text>
+            <text x="85" y="80" text-anchor="middle" fill="#7ecf93" font-size="9">complements rollout</text>
+          </g>
+
+          <!-- ============ FAST ROLLOUT (separate, under HUMAN) ============ -->
+          <!-- HUMAN → p_π down arrow, within DATA column -->
+          <path d="M 115 165 L 115 228" fill="none" stroke="#ffb020" stroke-width="1.6" marker-end="url(#A-amber)"/>
+          <rect x="132" y="184" width="60" height="14" rx="2" fill="#05070a" stroke="rgba(255,176,32,.45)"/>
+          <text x="162" y="195" text-anchor="middle" fill="#ffb020" font-size="9" font-weight="700" letter-spacing=".1em">FEATURES</text>
+
+          <text x="115" y="220" fill="#6e7681" font-size="9" font-weight="700" letter-spacing=".16em" text-anchor="middle">ROLLOUT · SLOT 02</text>
+
+          <g transform="translate(30,230)">
+            <rect x="0" y="0" width="170" height="70" rx="8" fill="url(#G-orange)" stroke="#ffb020" stroke-opacity=".7"/>
+            <text x="85" y="22" text-anchor="middle" fill="#ffb020" font-size="11" font-weight="700" letter-spacing=".1em">p<tspan font-size="9" baseline-shift="sub">π</tspan> FAST ROLLOUT</text>
+            <text x="85" y="42" text-anchor="middle" fill="#ffe2b3" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">~1000× p<tspan font-size="9" baseline-shift="sub">σ</tspan></text>
+            <text x="85" y="60" text-anchor="middle" fill="#d9b478" font-size="10">linear · hand-crafted</text>
+          </g>
+
+          <!-- ============ INFERENCE / MCTS (y=200-400) ============ -->
+          <text x="600" y="220" fill="#6e7681" font-size="9" font-weight="700" letter-spacing=".16em" text-anchor="middle">PER-MOVE SEARCH · SLOT 05</text>
+
+          <g transform="translate(230,230)">
+            <rect x="0" y="0" width="760" height="160" rx="10" fill="url(#G-teal)" stroke="#39ff88" stroke-opacity=".55" stroke-dasharray="4 4"/>
+            <text x="380" y="24" text-anchor="middle" fill="#39ff88" font-size="12" font-weight="700" letter-spacing=".12em">MCTS · PUCT   (no weights, pure glue)</text>
+            <text x="380" y="54" text-anchor="middle" fill="#d8ffe6" font-size="13" font-family="'JetBrains Mono',monospace">select:   a = argmax<tspan font-size="10" baseline-shift="sub">a</tspan> [ Q(s,a) + c<tspan font-size="10" baseline-shift="sub">puct</tspan> · P(a|s) · √ΣN(s,b) / (1 + N(s,a)) ]</text>
+            <text x="380" y="80" text-anchor="middle" fill="#d8ffe6" font-size="13" font-family="'JetBrains Mono',monospace">evaluate leaf:   V(s<tspan font-size="10" baseline-shift="sub">L</tspan>) = 0.5 · v<tspan font-size="10" baseline-shift="sub">θ</tspan>(s<tspan font-size="10" baseline-shift="sub">L</tspan>) + 0.5 · z(s<tspan font-size="10" baseline-shift="sub">L</tspan>)</text>
+            <text x="380" y="106" text-anchor="middle" fill="#d8ffe6" font-size="13" font-family="'JetBrains Mono',monospace">backup Q, N;   choose:   move = argmax<tspan font-size="10" baseline-shift="sub">a</tspan> N(root, a)   (most visits, not max Q)</text>
+            <text x="380" y="136" text-anchor="middle" fill="#9eff9e" font-size="10" font-style="italic">runs thousands of simulations per move; priors from networks, empirical Q from the tree</text>
+          </g>
+
+          <!-- arrows from networks into MCTS -->
+          <!-- p_σ → MCTS (prior P), vertical down from p_σ bottom -->
+          <path d="M 335 165 L 335 230" fill="none" stroke="#00e5ff" stroke-width="1.6" marker-end="url(#A-accent)"/>
+          <rect x="346" y="184" width="64" height="16" rx="2" fill="#05070a" stroke="rgba(0,229,255,.5)"/>
+          <text x="378" y="196" text-anchor="middle" fill="#00e5ff" font-size="10" font-weight="700">prior P</text>
+
+          <!-- v_θ → MCTS (leaf V), diagonal down-left -->
+          <path d="M 1025 165 L 880 230" fill="none" stroke="#39ff88" stroke-width="1.6" marker-end="url(#A-green)"/>
+          <rect x="910" y="184" width="58" height="16" rx="2" fill="#05070a" stroke="rgba(57,255,136,.5)"/>
+          <text x="939" y="196" text-anchor="middle" fill="#39ff88" font-size="10" font-weight="700">leaf V</text>
+
+          <!-- p_π → MCTS (rollout z), diagonal up-right -->
+          <path d="M 200 265 L 230 265" fill="none" stroke="#ffb020" stroke-width="1.6" marker-end="url(#A-amber)"/>
+          <rect x="118" y="252" width="76" height="16" rx="2" fill="#05070a" stroke="rgba(255,176,32,.5)"/>
+          <text x="156" y="264" text-anchor="middle" fill="#ffb020" font-size="10" font-weight="700">rollout z</text>
+
+          <!-- MCTS → MOVE -->
+          <path d="M 990 310 L 1020 310" fill="none" stroke="#ff3fa4" stroke-width="2" marker-end="url(#A-mag)"/>
+
+          <!-- MOVE -->
+          <g transform="translate(1020,275)">
+            <rect x="0" y="0" width="150" height="70" rx="8" fill="url(#G-pink)" stroke="#ff3fa4" stroke-opacity=".75"/>
+            <text x="75" y="22" text-anchor="middle" fill="#ff3fa4" font-size="11" font-weight="700" letter-spacing=".1em">MOVE a*</text>
+            <text x="75" y="42" text-anchor="middle" fill="#ffd7e6" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">argmax N</text>
+            <text x="75" y="60" text-anchor="middle" fill="#ffb3d1" font-size="10">played on board</text>
+          </g>
+
+          <!-- feedback arrow: MOVE → TAPE (lands on TAPE bottom edge at y=165) -->
+          <path d="M 1095 345 L 1095 405 Q 1095 418 1080 418 L 810 418 Q 795 418 795 405 L 795 168" fill="none" stroke="#ff3fa4" stroke-width="1.3" stroke-dasharray="4 4" marker-end="url(#A-mag)" opacity=".75"/>
+          <rect x="770" y="395" width="360" height="16" rx="2" fill="#05070a" stroke="rgba(255,63,164,.35)"/>
+          <text x="950" y="406" text-anchor="middle" fill="#ff3fa4" font-size="10" font-weight="700" letter-spacing=".04em">played games append to tape  ·  retrain v<tspan font-size="9" baseline-shift="sub">θ</tspan>  ·  close the loop</text>
+
+          <!-- legend at bottom -->
+          <g transform="translate(20,435)">
+            <rect x="0" y="0" width="1160" height="18" rx="3" fill="#0a0e14" stroke="rgba(139,148,158,.15)"/>
+            <circle cx="14" cy="9" r="4" fill="#00e5ff"/><text x="24" y="12" fill="#8b949e" font-size="9">SL</text>
+            <circle cx="64" cy="9" r="4" fill="#9d7bff"/><text x="74" y="12" fill="#8b949e" font-size="9">RL</text>
+            <circle cx="114" cy="9" r="4" fill="#39ff88"/><text x="124" y="12" fill="#8b949e" font-size="9">value / search</text>
+            <circle cx="214" cy="9" r="4" fill="#ffb020"/><text x="224" y="12" fill="#8b949e" font-size="9">hand-crafted</text>
+            <circle cx="304" cy="9" r="4" fill="#ff3fa4"/><text x="314" y="12" fill="#8b949e" font-size="9">self-play / output</text>
+            <text x="1150" y="12" text-anchor="end" fill="#6e7681" font-size="9" font-style="italic">Zero removes the cyan + amber boxes and merges p<tspan font-size="8" baseline-shift="sub">σ</tspan>+p<tspan font-size="8" baseline-shift="sub">ρ</tspan>+v<tspan font-size="8" baseline-shift="sub">θ</tspan> into one tower.</text>
+          </g>
+        </svg>
+      </div>
+      <p class="cap">Read the top row as the training dependency chain (<em>corpus → SL → RL → tape → value</em>, with the fast rollout as a parallel branch off the corpus), and the bottom box as the single per-move MCTS that composes the three of them (<em>prior P</em> from $p_\sigma$, <em>leaf V</em> blended from $v_\theta$ and rollout $z$, choose by visit count). The dashed pink feedback arrow is what makes it a <em>loop</em> rather than a pipeline: played games grow the tape, which retrains the value. The coloured mapping (cyan SL, violet RL, green value/search, amber hand-crafted, pink self-play) is reused across the rest of the article &mdash; in the shedding table (§<a href="#shedding">shedding</a>) each removed prior corresponds to one of these colours going away. Source: Silver et al. <em>Nature</em> 529 (2016), Fig. 1 &amp; §Methods.</p>
+
+      <p style="margin-top:14px">Three facts about this layout matter more than they get credit for. <b>First</b>, the four networks are <em>not</em> a stack &mdash; they don't compose in series on inference. They compose through the tree: $p_\sigma$ shapes its <em>breadth</em>, $v_\theta$ shapes its <em>depth termination</em>, $p_\pi$ fills the gap between the two. A 2016-grade 13-layer CNN was not enough to pick a move by itself (the raw policy was beaten by many amateur dans); the tree was what turned a good <em>suggestion machine</em> into a superhuman <em>deciding machine</em>. <b>Second</b>, the dataset the value network trains on is generated by <em>a different network ($p_\rho$) playing against itself</em>. That is the first appearance of the self-play tape as an <em>explicit data source</em> in a system that actually worked at scale. <b>Third</b>, the policy whose distribution the tree uses ($p_\sigma$) and the policy that <em>generated the training data for the scoring function</em> ($p_\rho$) are distinct. AlphaGo 2016 has <em>two</em> policies in the system, one for exploration breadth and one for data generation. The successor versions quietly collapse this back into one &mdash; and removing that redundancy is exactly what lets them drop the SL corpus.</p>
+    </div>
+  </section>
+
+  <!-- =========================== PUCT =========================== -->
+  <section id="puct">
+    <div class="wrap">
+      <h2 class="sec">puct <span class="desc-inline">// the one formula that decides what AlphaGo thinks about</span></h2>
+
+      <p>MCTS is a family. The specific instantiation AlphaGo uses &mdash; inherited from <a href="https://www.remi-coulom.fr/" target="_blank" rel="noopener">R&eacute;mi Coulom's</a> 2006 Crazy Stone and <a href="https://hal.inria.fr/inria-00164003/document" target="_blank" rel="noopener">Gelly &amp; Silver (2007)</a>'s UCT-with-priors &mdash; selects an action at each in-tree node by the <b>PUCT rule</b>. The 2016 version (Silver et al. 2016, §Methods, Eq. 1):</p>
+
+      <div class="formula">
+        $$a_t \;=\; \arg\max_a \Big[\;\underbrace{Q(s_t, a)}_{\text{exploit}} \;+\; \underbrace{u(s_t, a)}_{\text{explore}}\;\Big], \qquad u(s, a) \;=\; c_{\text{puct}}\cdot P(a\mid s)\cdot \frac{\sqrt{\sum_b N(s, b)}}{1 + N(s, a)}$$
+      </div>
+
+      <p>Four symbols, and each is a decision about <em>which prior the tree trusts</em>. $Q(s,a)$ is the average leaf value from simulations that passed through edge $(s,a)$ &mdash; the <em>empirical</em> prior, built by the tree itself as it runs. $P(a\mid s)$ is the SL policy's probability for action $a$ &mdash; the <em>human</em> prior, loaded from a neural network evaluated once per node. $N(s,a)$ is the visit count &mdash; the <em>attention budget</em> already spent on that edge. $c_{\text{puct}}$ is a scalar the authors set &mdash; the only tunable knob in the formula. The tree works by <em>deflating</em> the neural prior as visits accumulate: when $N(s,a)$ is small, $u$ is dominated by $c_{\text{puct}}\cdot P(a\mid s)$ and the network decides; when $N(s,a)$ is large, $u$ shrinks and $Q$ dominates. <em>In-tree, priors decay</em>.</p>
+
+      <p>The leaf evaluation is the other half. On reaching a leaf $s_L$, AlphaGo computes a blend of the value network and the fast rollout (Silver et al. 2016, Eq. 2):</p>
+
+      <div class="formula">
+        $$V(s_L) \;=\; (1 - \lambda)\, v_\theta(s_L) \;+\; \lambda\, z(s_L), \qquad \lambda = 0.5 \text{ in the match configuration.}$$
+      </div>
+
+      <p>where $z(s_L)$ is the outcome of a single rollout to terminal under the fast policy $p_\pi$. Both estimators are biased in different ways &mdash; the value network is biased toward the distribution it was trained on (self-play under $p_\rho$), the rollout is biased toward positions the fast policy handles well &mdash; and the mix hedges. The ablation (Silver et al. 2016, Fig. 4) shows each estimator alone is weaker than the blend; <b>$\lambda=0.5$ is the sweet spot</b>, and it's one of the few places where the paper admits the system still leans on hand-craft.</p>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">drift &mdash; what Zero changed in PUCT</span>
+        <p>AlphaGo Zero keeps the same PUCT form <em>but</em> drops the rollout term entirely: $V(s_L) = v_\theta(s_L)$, $\lambda = 0$ (Silver et al. 2017, §Methods). No fast rollout policy exists; the linear model with hand-crafted features is gone. This matters because the rollout was the most hand-engineered piece of AlphaGo Lee &mdash; dozens of pattern-match features, a whole parallel training pipeline &mdash; and it was load-bearing at $\lambda=0.5$. Zero removes it on the claim that the value network, trained on a <em>much</em> larger and more diverse self-play tape, is accurate enough to carry the full evaluation. The empirical evidence: Zero's Elo climbs past AlphaGo Lee in 3 days and past AlphaGo Master in 21, on 4 TPUs (Silver et al. 2017, Fig. 3). That is the strongest piece of evidence that hand-engineered rollout features, which cost Lee's team months, were <em>not load-bearing in principle</em> &mdash; they were load-bearing <em>relative to the value network's training distribution at that scale</em>. Shrink the hand-craft, widen the data, the value network catches up.</p>
+      </div>
+
+      <p class="principle">The reason PUCT is the most reusable idea in the 2016 paper has little to do with Go. It is a principled way of <em>spending a fixed compute budget</em> between a learned prior you trust up to a point and an empirical estimate you are accumulating by thinking. Every current "inference-time compute" system is doing some version of this &mdash; Tree-of-Thought, o1's hidden-CoT sampling, <a href="https://deepmind.google/discover/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/" target="_blank" rel="noopener">AlphaEvolve</a>'s population search over LLM-proposed code edits, <a href="https://deepmind.google/discover/blog/ai-solves-imo-problems-at-silver-medal-level/" target="_blank" rel="noopener">AlphaProof</a>'s search over Lean proof tactics. The prior is an LLM; the empirical estimate is a verifier (unit tests, theorem-prover assent, graded rubric); PUCT-shaped selection rules decide where to spend the next thousand forward passes. AlphaGo's Eq. 1, stripped of its $19\times19$ board, is the central equation of a decade of agentic search.</p>
+
+      <h3 class="sub">the self-improvement equation &mdash; why the loop actually closes</h3>
+
+      <p>PUCT explains how AlphaGo <em>thinks</em>. It does not explain why the system <em>gets stronger over time</em>. For that, Silver et al. 2017 (Zero) states the cleanest equation in the whole line. Merge the policy and value heads into one residual tower $f_\theta(s) = (\mathbf{p}_\theta(\cdot|s),\; v_\theta(s))$, and train it on self-play games where each position $s$ carries two targets: the MCTS visit distribution $\boldsymbol{\pi}$ and the game outcome $z\in\{-1, +1\}$.</p>
+
+      <div class="formula">
+        $$L(\theta) \;=\; \underbrace{(z - v_\theta(s))^2}_{\text{value MSE}} \;-\; \underbrace{\boldsymbol{\pi}^\top \log \mathbf{p}_\theta(\cdot|s)}_{\text{policy cross-entropy}} \;+\; \underbrace{c\,\|\theta\|_2^2}_{\text{L2 reg}}.$$
+      </div>
+
+      <p>Three terms. One tower. No SL corpus, no rollout, no separate RL loop &mdash; every component of the four-network 2016 system has been absorbed into two heads over a shared trunk. The line to stare at is the middle one. The policy head is trained to predict <em>what the tree decided</em>, not <em>what a human did</em>. And what the tree decided is the tempered visit distribution:</p>
+
+      <div class="formula">
+        $$\boldsymbol{\pi}(a \mid s) \;=\; \frac{N(s, a)^{1/\tau}}{\sum_b N(s, b)^{1/\tau}}, \qquad \tau \to 0 \text{ after the opening moves.}$$
+      </div>
+
+      <p>This is the pivot the rest of the decade is built on. MCTS is not just a decision-time wrapper; it's a <b>policy-improvement operator</b> $\mathcal{T}$ that takes a prior $\mathbf{p}_\theta$ and a value $v_\theta$ and returns a new distribution $\boldsymbol{\pi} = \mathcal{T}(\mathbf{p}_\theta, v_\theta)$ that is provably stronger than $\mathbf{p}_\theta$ when $v_\theta$ is a reasonable estimator (<a href="https://arxiv.org/abs/2007.12509" target="_blank" rel="noopener">Grill et al. 2020</a> later formalized this as a regularized-policy-iteration step; the intuition is older and goes back to <a href="https://hal.inria.fr/inria-00164003/document" target="_blank" rel="noopener">Gelly &amp; Silver 2007</a>). Once you see MCTS this way, the closed loop has a clean mathematical shape:</p>
+
+      <div class="callout" data-variant="ok">
+        <span class="t">the loop as regularized policy iteration</span>
+        <p><b>(i) improve:</b> $\boldsymbol{\pi} = \mathcal{T}(\mathbf{p}_\theta, v_\theta)$ &mdash; spend search budget, produce stronger per-state distribution.<br/>
+        <b>(ii) evaluate:</b> play the game to terminal under $\boldsymbol{\pi}$, observe outcome $z$.<br/>
+        <b>(iii) distill:</b> minimize $L(\theta)$ to pull $\mathbf{p}_\theta$ toward $\boldsymbol{\pi}$ and $v_\theta$ toward $z$.<br/>
+        <b>(iv) repeat.</b> Stronger $\mathbf{p}_\theta$ makes MCTS spend its visits smarter; stronger $v_\theta$ makes the leaves reliable enough to shrink rollouts. Each round of the loop tightens the next.</p>
+      </div>
+
+      <p>The reason this matters beyond Go: <em>this is the exact same shape</em> used by every post-2023 LLM RL recipe that produces strong reasoners. Replace MCTS with "sample $K$ CoT completions and keep the top-$k$ by verifier score"; replace $\boldsymbol{\pi}$ with the empirical distribution of <em>kept</em> completions; replace the cross-entropy term with a KL or a clipped-ratio objective, and you have <a href="https://arxiv.org/abs/2402.03300" target="_blank" rel="noopener">DeepSeek-Math's GRPO</a>, <a href="https://arxiv.org/abs/2501.12948" target="_blank" rel="noopener">DeepSeek-R1-Zero</a>'s outer loop, or the Kimi-K2 self-critique rubric loop. The <em>policy-improvement operator</em> slot &mdash; once occupied by MCTS over a board, now occupied by rejection sampling over a reasoning chain &mdash; is the thing doing the actual work. What changed in ten years isn't that we stopped using AlphaGo Zero's equation. It's that we got less picky about what counts as a search.</p>
+
+      <div class="fig-wrap accent-violet">
+        <div class="fig-bar">
+          <span class="fig-bar-title">ZERO &middot; ONE TOWER, TWO HEADS, ONE EQUATION</span>
+          <span class="fig-bar-id">fig: loop/zero</span>
+        </div>
+        <svg viewBox="0 0 1200 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AlphaGo Zero as a self-improvement loop: from a state, MCTS guided by the current policy and value heads produces a tempered visit distribution pi; this serves as the policy target, while the terminal outcome z serves as the value target; the combined MSE plus cross-entropy plus L2 loss updates the single shared residual tower.">
+          <rect x="0" y="0" width="1200" height="260" fill="url(#P-grid)" opacity=".45"/>
+
+          <g transform="translate(40,50)">
+            <rect x="0" y="0" width="160" height="70" rx="8" fill="url(#G-slate)" stroke="rgba(139,148,158,.55)"/>
+            <text x="80" y="26" text-anchor="middle" fill="#c9d1d9" font-size="11" font-weight="700" letter-spacing=".1em">POSITION s</text>
+            <text x="80" y="46" text-anchor="middle" fill="#8b949e" font-size="10">any self-play state</text>
+          </g>
+
+          <path d="M 208 85 L 252 85" fill="none" stroke="#00e5ff" stroke-width="1.8" marker-end="url(#A-accent)"/>
+
+          <g transform="translate(260,30)">
+            <rect x="0" y="0" width="240" height="110" rx="10" fill="url(#G-teal)" stroke="#39ff88" stroke-opacity=".55" stroke-dasharray="3 3"/>
+            <text x="120" y="22" text-anchor="middle" fill="#39ff88" font-size="11" font-weight="700" letter-spacing=".1em">MCTS &middot; 𝒯(p<tspan font-size="9" baseline-shift="sub">θ</tspan>, v<tspan font-size="9" baseline-shift="sub">θ</tspan>)</text>
+            <text x="120" y="48" text-anchor="middle" fill="#d8ffe6" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">1,600 simulations</text>
+            <text x="120" y="68" text-anchor="middle" fill="#9eff9e" font-size="10">PUCT selection, one sim = path + leaf</text>
+            <text x="120" y="92" text-anchor="middle" fill="#bff0d1" font-size="10" font-style="italic">policy-improvement operator</text>
+          </g>
+
+          <path d="M 508 85 L 552 85" fill="none" stroke="#39ff88" stroke-width="1.8" marker-end="url(#A-green)"/>
+
+          <g transform="translate(560,30)">
+            <rect x="0" y="0" width="240" height="110" rx="10" fill="url(#G-violet)" stroke="#9d7bff" stroke-opacity=".6"/>
+            <text x="120" y="22" text-anchor="middle" fill="#9d7bff" font-size="11" font-weight="700" letter-spacing=".1em">TARGETS (π, z)</text>
+            <text x="120" y="48" text-anchor="middle" fill="#e2d7ff" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">π = N<tspan font-size="9" baseline-shift="super">1/τ</tspan> / ΣN<tspan font-size="9" baseline-shift="super">1/τ</tspan></text>
+            <text x="120" y="68" text-anchor="middle" fill="#e2d7ff" font-size="12" font-family="'JetBrains Mono',monospace" font-weight="700">z = terminal ±1</text>
+            <text x="120" y="92" text-anchor="middle" fill="#c7b5ff" font-size="10" font-style="italic">strictly stronger than p<tspan font-size="9" baseline-shift="sub">θ</tspan></text>
+          </g>
+
+          <path d="M 808 85 L 852 85" fill="none" stroke="#9d7bff" stroke-width="1.8" marker-end="url(#A-violet)"/>
+
+          <g transform="translate(860,30)">
+            <rect x="0" y="0" width="280" height="110" rx="10" fill="url(#G-pink)" stroke="#ff3fa4" stroke-opacity=".6"/>
+            <text x="140" y="22" text-anchor="middle" fill="#ff3fa4" font-size="11" font-weight="700" letter-spacing=".1em">ONE TOWER, TWO HEADS</text>
+            <text x="140" y="48" text-anchor="middle" fill="#ffd7e6" font-size="11" font-family="'JetBrains Mono',monospace" font-weight="700">L = (z − v<tspan font-size="9" baseline-shift="sub">θ</tspan>)² − π·log p<tspan font-size="9" baseline-shift="sub">θ</tspan> + c‖θ‖²</text>
+            <text x="140" y="70" text-anchor="middle" fill="#ffb3d1" font-size="10">40 residual blocks &middot; 4 TPUs</text>
+            <text x="140" y="92" text-anchor="middle" fill="#ffb3d1" font-size="10" font-style="italic">distill improvement into weights</text>
+          </g>
+
+          <!-- feedback arrow -->
+          <path d="M 1000 140 L 1000 190 Q 1000 210 980 210 L 400 210 Q 380 210 380 190 L 380 140" fill="none" stroke="#ff3fa4" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#A-mag)" opacity=".85"/>
+          <text x="690" y="226" text-anchor="middle" fill="#ff3fa4" font-size="11" font-weight="700">updated p<tspan font-size="9" baseline-shift="sub">θ</tspan>, v<tspan font-size="9" baseline-shift="sub">θ</tspan> → stronger MCTS next iteration → stronger π → stronger targets → …</text>
+        </svg>
+      </div>
+      <p class="cap">The 2016 version of this figure had five boxes and two separate training pipelines; Zero is <em>three</em> boxes. MCTS is both the per-move decision rule (in-game) and the per-state policy-improvement operator (in-training). The feedback arrow is the entire reason anything gets better. Source: Silver et al. <em>Nature</em> 2017, §Methods and Eqs. 1&ndash;2; the "regularized policy iteration" reading is <a href="https://arxiv.org/abs/2007.12509" target="_blank" rel="noopener">Grill et al., NeurIPS 2020</a>.</p>
+    </div>
+  </section>
+
+  <!-- =========================== TWO MOVES =========================== -->
+  <section id="moves">
+    <div class="wrap">
+      <h2 class="sec">37 and 78 <span class="desc-inline">// one move each direction through the 1-in-10,000 door</span></h2>
+
+      <p>Any honest write-up has to spend a section on the two moves, because the symmetry is the lesson. Both Move 37 (AlphaGo, Game 2, White) and Move 78 (Lee Sedol, Game 4, White) were reported, after the fact, to have roughly <b>1/10,000 probability</b> under their respective policies. That they are cited identically is not a coincidence &mdash; and the asymmetry in <em>how</em> each was produced is exactly the gap between 2016 AI and a world Go champion.</p>
+
+      <p style="color:var(--fg-2);font-size:13px;margin-top:-4px"><em>The two board diagrams below are <b>schematic</b>, not move-by-move reconstructions &mdash; they render the <em>type</em> of move (shoulder hit on the fifth line; wedge into a contact fight) at approximate coordinates. Full SGF records are linked from the <a href="https://en.wikipedia.org/wiki/AlphaGo_versus_Lee_Sedol" target="_blank" rel="noopener">AlphaGo vs Lee Sedol</a> Wikipedia article.</em></p>
+
+      <div class="grid c2">
+        <div class="card">
+          <h4>Game 2 &middot; AlphaGo (White) &middot; <span style="color:var(--cyan)">Move 37</span></h4>
+          <svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A 19 by 19 Go board fragment showing the right side of the board with a shoulder hit on the fifth line from the edge labeled as Move 37." style="width:100%;height:auto;max-width:300px;margin:10px auto;display:block">
+            <rect x="0" y="0" width="300" height="300" fill="url(#P-go)" opacity=".9"/>
+            <g stroke="#3a4566" stroke-width=".6" fill="none">
+              <g id="grid">
+                <line x1="20" y1="20" x2="20" y2="280"/>
+                <line x1="50" y1="20" x2="50" y2="280"/>
+                <line x1="80" y1="20" x2="80" y2="280"/>
+                <line x1="110" y1="20" x2="110" y2="280"/>
+                <line x1="140" y1="20" x2="140" y2="280"/>
+                <line x1="170" y1="20" x2="170" y2="280"/>
+                <line x1="200" y1="20" x2="200" y2="280"/>
+                <line x1="230" y1="20" x2="230" y2="280"/>
+                <line x1="260" y1="20" x2="260" y2="280"/>
+                <line x1="280" y1="20" x2="280" y2="280"/>
+                <line x1="20" y1="20" x2="280" y2="20"/>
+                <line x1="20" y1="50" x2="280" y2="50"/>
+                <line x1="20" y1="80" x2="280" y2="80"/>
+                <line x1="20" y1="110" x2="280" y2="110"/>
+                <line x1="20" y1="140" x2="280" y2="140"/>
+                <line x1="20" y1="170" x2="280" y2="170"/>
+                <line x1="20" y1="200" x2="280" y2="200"/>
+                <line x1="20" y1="230" x2="280" y2="230"/>
+                <line x1="20" y1="260" x2="280" y2="260"/>
+                <line x1="20" y1="280" x2="280" y2="280"/>
+              </g>
+            </g>
+            <!-- black stones: area fight right -->
+            <circle cx="230" cy="140" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="230" cy="170" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="200" cy="170" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="200" cy="200" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="260" cy="110" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="170" cy="230" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <!-- white stones -->
+            <circle cx="200" cy="140" r="10" fill="#e6edf3" stroke="#8b949e" stroke-width=".6"/>
+            <circle cx="230" cy="200" r="10" fill="#e6edf3" stroke="#8b949e" stroke-width=".6"/>
+            <circle cx="140" cy="230" r="10" fill="#e6edf3" stroke="#8b949e" stroke-width=".6"/>
+            <!-- Move 37: shoulder hit at 5th line -->
+            <circle cx="140" cy="140" r="11" fill="#e6edf3" stroke="#00e5ff" stroke-width="2"/>
+            <text x="140" y="144" text-anchor="middle" fill="#00e5ff" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700">37</text>
+            <!-- callout arrow -->
+            <path d="M 90 90 L 128 130" fill="none" stroke="#00e5ff" stroke-width="1.2" marker-end="url(#A-accent)"/>
+            <text x="75" y="80" text-anchor="start" fill="#00e5ff" font-size="10" font-family="'JetBrains Mono',monospace">5th line</text>
+            <text x="75" y="92" text-anchor="start" fill="#00e5ff" font-size="9" font-family="'JetBrains Mono',monospace">shoulder hit</text>
+          </svg>
+          <p>AlphaGo's white shoulder-hit on the fifth line of the right side, Game 2. Amateur instinct is that moves on the fifth line away from a framework are overreach &mdash; the conservative wisdom plays on the fourth. AlphaGo's policy $p_\sigma$ gave this move a <b>prior of ~1/10,000</b> under expert play (DeepMind, <em>AlphaGo</em> page); the <em>tree</em> promoted it anyway because $v_\theta$ estimated a higher win-rate along that line than the popular alternatives, and the visits along that edge validated the value estimate as the simulations deepened. In PUCT terms: $P$ was tiny, but $Q$ caught up before $u$ decayed.</p>
+        </div>
+        <div class="card">
+          <h4>Game 4 &middot; Lee Sedol (White) &middot; <span style="color:var(--magenta)">Move 78</span></h4>
+          <svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A 19 by 19 Go board fragment showing a wedge play in the middle of a heated exchange labeled as Move 78, known as the divine move." style="width:100%;height:auto;max-width:300px;margin:10px auto;display:block">
+            <rect x="0" y="0" width="300" height="300" fill="url(#P-go)" opacity=".9"/>
+            <g stroke="#3a4566" stroke-width=".6" fill="none">
+              <line x1="20" y1="20" x2="20" y2="280"/>
+              <line x1="50" y1="20" x2="50" y2="280"/>
+              <line x1="80" y1="20" x2="80" y2="280"/>
+              <line x1="110" y1="20" x2="110" y2="280"/>
+              <line x1="140" y1="20" x2="140" y2="280"/>
+              <line x1="170" y1="20" x2="170" y2="280"/>
+              <line x1="200" y1="20" x2="200" y2="280"/>
+              <line x1="230" y1="20" x2="230" y2="280"/>
+              <line x1="260" y1="20" x2="260" y2="280"/>
+              <line x1="280" y1="20" x2="280" y2="280"/>
+              <line x1="20" y1="20" x2="280" y2="20"/>
+              <line x1="20" y1="50" x2="280" y2="50"/>
+              <line x1="20" y1="80" x2="280" y2="80"/>
+              <line x1="20" y1="110" x2="280" y2="110"/>
+              <line x1="20" y1="140" x2="280" y2="140"/>
+              <line x1="20" y1="170" x2="280" y2="170"/>
+              <line x1="20" y1="200" x2="280" y2="200"/>
+              <line x1="20" y1="230" x2="280" y2="230"/>
+              <line x1="20" y1="260" x2="280" y2="260"/>
+              <line x1="20" y1="280" x2="280" y2="280"/>
+            </g>
+            <!-- black stones around center -->
+            <circle cx="110" cy="110" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="110" cy="140" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="140" cy="110" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="170" cy="170" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="200" cy="140" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="140" cy="200" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <circle cx="170" cy="110" r="10" fill="#0a0e14" stroke="#39ff88" stroke-width=".6"/>
+            <!-- white stones -->
+            <circle cx="140" cy="140" r="10" fill="#e6edf3" stroke="#8b949e" stroke-width=".6"/>
+            <circle cx="110" cy="170" r="10" fill="#e6edf3" stroke="#8b949e" stroke-width=".6"/>
+            <circle cx="200" cy="170" r="10" fill="#e6edf3" stroke="#8b949e" stroke-width=".6"/>
+            <circle cx="140" cy="170" r="10" fill="#e6edf3" stroke="#8b949e" stroke-width=".6"/>
+            <!-- Move 78: wedge -->
+            <circle cx="170" cy="140" r="11" fill="#e6edf3" stroke="#ff3fa4" stroke-width="2"/>
+            <text x="170" y="144" text-anchor="middle" fill="#ff3fa4" font-family="'JetBrains Mono',monospace" font-size="10" font-weight="700">78</text>
+            <path d="M 230 80 L 182 132" fill="none" stroke="#ff3fa4" stroke-width="1.2" marker-end="url(#A-mag)"/>
+            <text x="232" y="76" text-anchor="start" fill="#ff3fa4" font-size="10" font-family="'JetBrains Mono',monospace">&ldquo;God's touch&rdquo;</text>
+            <text x="232" y="88" text-anchor="start" fill="#ff3fa4" font-size="9" font-family="'JetBrains Mono',monospace">wedge into dame</text>
+          </svg>
+          <p>Lee Sedol's white wedge, Game 4. Aja Huang confirmed in a <a href="https://en.wikipedia.org/wiki/AlphaGo_versus_Lee_Sedol" target="_blank" rel="noopener">June 2016 Netherlands presentation</a> that AlphaGo's value network <em>did not</em> anticipate this move, and its value estimate failed to adjust smoothly after it was played; AlphaGo then produced a sequence of weak moves and Lee won by resignation at move 180. This is the only game AlphaGo lost in its 74 official matches (Wikipedia AlphaGo, §Match against Lee Sedol, citing news coverage 2018). The lesson that ran <em>from</em> humans <em>to</em> DeepMind: neural value estimators on rare distributions are brittle; self-play's coverage was incomplete.</p>
+        </div>
+      </div>
+
+      <p style="margin-top:16px">Read these two moves as a pair and they make one point: <em>the prior distribution you sampled from decides which creative moves cost you thinking time</em>. Move 37 was 1/10,000 under $p_\sigma$ &mdash; a human-trained prior. The <em>tree</em> promoted it to a decision because $v_\theta$ (trained on $p_\rho$-self-play, not on human games) disagreed with the human prior. Move 78 was 1/10,000 under $v_\theta$'s <em>own</em> distribution &mdash; the self-play tape had not visited positions shaped like that wedge, so the leaf value estimates along it were unreliable, and the PUCT formula's $Q$ term didn't stabilize. What broke AlphaGo in Game 4 was not a lack of creativity but a <em>coverage gap in the self-play distribution</em>. Silver et al. 2017 (Zero) doesn't name Move 78, but the architectural move &mdash; throw away the SL corpus, run self-play far wider &mdash; is exactly the fix that coverage gap asked for.</p>
+
+      <p class="principle">The pattern is larger than Go. Every system that combines a learned prior with a search or verifier has a "Move 78 problem": failures cluster in the region of input space the generator's self-play has not covered, and a verifier trained on that self-play cannot be trusted there. Modern RL post-training has a name for this &mdash; distribution shift under the target policy &mdash; and most of the solutions that work (on-policy rollouts, reward model re-training, <a href="https://thinkingmachines.ai/blog/on-policy-distillation/" target="_blank" rel="noopener">on-policy distillation</a>) are at heart the same move AlphaGo Zero makes: <em>regenerate the data under the current distribution, retrain the verifier on that data</em>. Lee Sedol's divine move is not a footnote. It's the first clean instance of the brittleness that the next decade of alignment work has been paying for.</p>
+    </div>
+  </section>
+
+  <!-- =========================== THE SHEDDING =========================== -->
+  <section id="shedding">
+    <div class="wrap">
+      <h2 class="sec">the shedding <span class="desc-inline">// five systems, five priors retired</span></h2>
+
+      <p>The decade-long arc is, at heart, a sequence of <em>removals</em>. The table below lays out six systems, the year they shipped, the Elo they reached, the hardware they ran on, and &mdash; the only column I would ask you to read twice &mdash; <b>what prior they stopped needing</b>. Elo and hardware rows are from the Wikipedia configuration table (itself citing Silver et al. 2016/2017); prior-retired column is my reading of the papers and the <a href="https://deepmind.google/blog/10-years-of-alphago/" target="_blank" rel="noopener">DeepMind 10-year retrospective</a>.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Date</th>
+              <th class="num">Elo</th>
+              <th>Hardware</th>
+              <th>Opponent / feat</th>
+              <th><b>What it stopped needing</b></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>AlphaGo Fan</td>
+              <td>Oct 2015</td>
+              <td class="num">3,144</td>
+              <td>1,202 CPU + 176 GPU, distributed</td>
+              <td>5&ndash;0 vs Fan Hui (2p)</td>
+              <td>&mdash; baseline: SL + RL + MCTS + fast rollout</td>
+            </tr>
+            <tr>
+              <td>AlphaGo Lee</td>
+              <td>Mar 2016</td>
+              <td class="num">3,739</td>
+              <td>48 TPUs, distributed</td>
+              <td>4&ndash;1 vs Lee Sedol (9p)</td>
+              <td>cluster CPUs &mdash; first TPU deployment</td>
+            </tr>
+            <tr>
+              <td>AlphaGo Master</td>
+              <td>May 2017</td>
+              <td class="num">4,858</td>
+              <td>4 TPUs, single machine</td>
+              <td>60&ndash;0 online; 3&ndash;0 vs Ke Jie</td>
+              <td>most of the hand-crafted input features &mdash; a "first unified neural-net-only AlphaGo" according to the Wuzhen briefing</td>
+            </tr>
+            <tr>
+              <td><b>AlphaGo Zero</b></td>
+              <td>Oct 2017</td>
+              <td class="num"><b class="best">5,185</b></td>
+              <td><b>4 TPUs</b>, single machine</td>
+              <td><b>100&ndash;0 vs AlphaGo Lee</b></td>
+              <td><b>the human SL corpus</b>. Self-play from random; policy+value merged; no rollout. (Silver et al. <em>Nature</em> 2017)</td>
+            </tr>
+            <tr>
+              <td>AlphaZero</td>
+              <td>Dec 2017</td>
+              <td class="num">5,018</td>
+              <td>4 TPUs, single machine</td>
+              <td>Superhuman chess/shogi/Go &lt;24 h from scratch</td>
+              <td>Go-specific input planes &amp; board symmetry augmentation. One algorithm, three games. (Silver et al. arXiv 1712.01815)</td>
+            </tr>
+            <tr>
+              <td>MuZero</td>
+              <td>Dec 2020</td>
+              <td class="num">~5,000 Go; SoTA Atari</td>
+              <td>TPU-v3 clusters</td>
+              <td>Matches AlphaZero without rules; SoTA on Atari</td>
+              <td><b>the environment rules themselves</b>. Search runs inside a learned latent dynamics model $h_\theta(s, a)$; no simulator call inside the tree. (Schrittwieser et al. <em>Nature</em> 2020)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="cap">Elo columns from <a href="https://en.wikipedia.org/wiki/AlphaGo#Versions" target="_blank" rel="noopener">Wikipedia's AlphaGo versions table</a>, which attributes them to Silver et al. <em>Nature</em> 2017 &ldquo;Mastering the game of Go without human knowledge&rdquo; (AlphaZero's Elo is my reading from the arXiv's Fig. 1 at the Go milestone; the comparison-to-Zero Elo pre-fit). AlphaGo Master's three-stone-stronger figure relative to AlphaGo Lee is <a href="https://www.sohu.com/a/142718301_473283" target="_blank" rel="noopener">Hassabis's Wuzhen briefing, 24 May 2017</a>, re-quoted by Wikipedia.</p>
+
+      <div class="callout" data-variant="k" style="margin-top:16px">
+        <span class="t">the Bitter Lesson, with receipts</span>
+        <p><a href="http://www.incompleteideas.net/IncIdeas/BitterLesson.html" target="_blank" rel="noopener">Rich Sutton's 2019 essay</a> argued that the methods which have won, historically, are the ones that <em>scale with compute</em> and lean on general-purpose learning and search, not hand-crafted domain knowledge. AlphaGo's shedding sequence is the cleanest single case-study for that claim. Fan's system had 48 Go-specific feature planes + rollout patterns + an SL corpus; Lee's TPU version shrank the hardware but kept the features; Master's briefing at Wuzhen was explicitly "we removed most of the hand-crafted features"; Zero removed the last of them plus the SL corpus; AlphaZero removed Go-specific input planes and symmetry augmentation; MuZero removed the rules. <em>Every decrement improved the system</em>. The hand-crafted pieces that felt load-bearing at each step turned out not to be, once the general learning signal was scaled. AlphaGo is the paper of record for why the bitter lesson is bitter &mdash; people worked for years on rollout features and feature-engineered input planes that the next version cut to zero lines of code with no performance loss. If you're writing domain knowledge into a model today and the verifier is cheap, a sceptical reading is: this is what Zero dropped.</p>
+      </div>
+
+      <h3 class="sub">What each removal <em>bought</em></h3>
+
+      <p>The seductive reading of this table is "every system is a scaled-up version of the previous one, and the field is just scaling". That is not what the papers say. Every removal is a <em>negative</em> result that made a <em>positive</em> system possible. Let me take them one at a time.</p>
+
+      <div class="grid c2">
+        <div class="card">
+          <h4>[Zero ↩ SL]  data you didn't have wasn't data you needed</h4>
+          <p>The 2017 paper's cleanest claim is that starting from random and running self-play <em>surpasses</em> starting from KGS + self-play, given enough training. Three days to beat AlphaGo Lee, 21 days to beat AlphaGo Master, 40 days to beat all previous versions. This is the strongest evidence we have that an expensive human-data curation step can be completely redundant <em>when the search signal is accurate and cheap</em>. Every RLHF follow-up that has run a pure-RL ablation (<a href="https://arxiv.org/abs/2402.03300" target="_blank" rel="noopener">DeepSeek-Math's GRPO work</a>, <a href="https://arxiv.org/abs/2501.12948" target="_blank" rel="noopener">DeepSeek-R1-Zero</a>) has hit a version of this result.</p>
+        </div>
+        <div class="card">
+          <h4>[AlphaZero ↩ Go features]  the recipe wasn't Go-specific</h4>
+          <p>AlphaGo Lee's input was 48 feature planes: liberties, turns since last move, ladder-captured groups, ladder-escape, sensibleness, etc. &mdash; all Go-specific. AlphaZero cuts this down to <b>17 planes</b> (8 history pairs + player-to-move; Silver et al. 2017b, Tab. S1): nothing Go-specific except the board. The data augmentation by the 8 symmetries of the square is also cut, because chess isn't rotation-invariant and the authors wanted one algorithm across games. What's left is a <em>template</em>: policy+value tower, PUCT, self-play, Dirichlet-noise at the root for exploration. The 24-hour training run across three games is a deliberate demonstration: <em>the template generalizes</em>.</p>
+        </div>
+        <div class="card">
+          <h4>[MuZero ↩ rules]  even the simulator wasn't load-bearing</h4>
+          <p>AlphaZero's MCTS calls the <em>true</em> game simulator at every in-tree step to compute the next state. That is free in Go/chess/shogi &mdash; but it's a fiction in the real world. MuZero replaces the simulator with three learned functions: $h_\theta$ (representation: observation → latent), $g_\theta$ (dynamics: (latent, action) → next latent + reward), $f_\theta$ (prediction: latent → policy + value). Search runs entirely inside the latent model. The striking empirical fact is that this doesn't lose strength in Go/chess/shogi and becomes SoTA on Atari &mdash; where no exact simulator is available. The conceptual fact is bigger: <em>the structure that made AlphaZero work was search+prediction in a well-calibrated latent world model, not search in the real world.</em> Every current "world model for RL" line of work descends from this.</p>
+        </div>
+        <div class="card">
+          <h4>[AlphaProof ↩ numerical verifier]  the rule slot can be natural-language</h4>
+          <p>The 2024 AlphaProof/AlphaGeometry 2 system that reached <a href="https://deepmind.google/discover/blog/ai-solves-imo-problems-at-silver-medal-level/" target="_blank" rel="noopener">silver-medal IMO standard</a> is, architecturally, AlphaZero with Lean 4 as the environment: a Gemini-finetuned policy proposes tactics, Lean's kernel verifies, self-play over a fixed problem distribution generates the tape. Three of the four solved problems were solved by this loop; the geometry problem by AlphaGeometry 2. The 2025 version reached <a href="https://deepmind.google/discover/blog/advanced-version-of-gemini-with-deep-think-officially-achieves-gold-medal-standard-at-the-international-mathematical-olympiad/" target="_blank" rel="noopener">gold-medal level</a> using Gemini Deep Think, where the verifier is a graded-rubric language model and the search is over chains of natural-language reasoning. The loop's "rule" slot is filled by whatever is cheap and correct on the domain. In math, that's Lean. In code, it's unit tests. In open-ended reasoning, it's graded language. The slot is domain-agnostic.</p>
+        </div>
+      </div>
+
+      <p class="principle">The shedding sequence is not compression for its own sake. It is the <em>map</em> of which priors were fake. Each successor system ran a controlled experiment on the last one: remove the SL corpus, does the loop still close? Remove the Go symmetries, does it still close? Remove the simulator, does it still close? Replace the numerical verifier with a linguistic one, does it still close? The answer has been yes, four times in a row. What that tells you is that the loop itself &mdash; policy-proposes, verifier-scores, search-improves, distill-back &mdash; is the part doing the work. The priors were scaffolding around a real core. It is, unusually for AI, a decade of scientific <em>negative</em> results, and the field's understanding of what's actually load-bearing is better because of them.</p>
+    </div>
+  </section>
+
+  <!-- =========================== COMPUTE INVERSION =========================== -->
+  <section id="inversion">
+    <div class="wrap">
+      <h2 class="sec">compute-inversion <span class="desc-inline">// where the search budget lives has flipped</span></h2>
+
+      <p>There is an axis I did not see named in any of the AlphaGo retrospectives that I think cuts cleanly: <em>when, in the system's lifecycle, is the search performed?</em> AlphaGo and o-series answer that question oppositely, and a lot of the apparent weirdness of 2026 post-training vanishes if you read it through this axis.</p>
+
+      <p><b>AlphaGo Zero.</b> At training time, every single self-play move is an MCTS with <b>1,600 simulations</b> (Silver et al. 2017, §Methods, <em>"each move used ~1,600 simulations, ~0.4 s thinking time per move"</em>). A full game is ~200 moves, so one self-play game consumes roughly $1{,}600 \times 200 = 320{,}000$ evaluations of the policy-value tower &mdash; and the full 40-day training run stacks millions of such games. The final weight file is a <em>distillation</em> of all that search into a pair of heads. At deployment, MCTS is still used &mdash; but Fig. 4a of the same paper plots the "raw network" strength (policy head alone, no search) climbing well above <b>AlphaGo Lee's Elo gridline (3,739)</b> by training end, while the full MCTS version adds another ~1,500&ndash;2,000 Elo on top. The 40-day training run shifted the bulk of the compute budget into the weights; inference-time search became a multiplier, not a crutch.</p>
+
+      <p><b>o-series / Deep Think / AlphaEvolve.</b> At training time, search is usually absent or nearly so &mdash; pre-training is next-token prediction, post-training is RLHF against a reward model on short rollouts. At inference, search is where the compute lives: sample $K$ chains, keep the ones a verifier accepts, optionally grow a tree over partial chains. Deep Think's gold-medal IMO 2025 run was <em>hours per problem</em>; AlphaEvolve spends a population-search budget per algorithm discovery. The per-query compute is elastic and enormous.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Property</th>
+              <th>AlphaGo Zero</th>
+              <th>o-series / Deep Think</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Search performed at</td>
+              <td><b>train time</b> (every self-play move)</td>
+              <td><b>test time</b> (every user query)</td>
+            </tr>
+            <tr>
+              <td>Budget per move/query</td>
+              <td class="num">1,600 MCTS sims &middot; fixed</td>
+              <td class="num">$K$ CoT samples / tree expansions &middot; elastic</td>
+            </tr>
+            <tr>
+              <td>Policy at deploy</td>
+              <td>Already above AlphaGo Lee without search; MCTS adds ~1,500&ndash;2,000 Elo on top</td>
+              <td>Weak alone; strong <em>with</em> sampled search</td>
+            </tr>
+            <tr>
+              <td>Task distribution</td>
+              <td>Narrow: one game, one payoff, one state space</td>
+              <td>Wide: arbitrary user queries, many domains</td>
+            </tr>
+            <tr>
+              <td>Verifier at training</td>
+              <td>Cheap and exact (game rules)</td>
+              <td>Expensive / approximate (RMs, rubrics) &mdash; or absent</td>
+            </tr>
+            <tr>
+              <td>Amortization</td>
+              <td>Train once, serve many matches per weight</td>
+              <td>Train once, pay search cost <em>per query</em></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cap">Rows are a design-space reading. AlphaGo Zero's 1,600-sims-per-move is from Silver et al. 2017, §Methods; the raw-network-vs-MCTS gap is read off Fig. 4a of the same paper, which plots both Elo curves over the 40-day training run against AlphaGo Lee / AlphaGo Master gridlines. The "~1,500&ndash;2,000 Elo" range is my read of the final-iteration gap between the two curves; the paper does not report a single number. For o-series / Deep Think, per-query compute is not publicly disclosed; "elastic" is the observable characteristic.</p>
+
+      <div class="callout" data-variant="k">
+        <span class="t">the dual use of search</span>
+        <p>Search-at-train-time and search-at-test-time are <em>duals</em>. Both are ways to extract more value from a weak policy via a verifier. The choice between them is dictated by (i) how narrow the task distribution is &mdash; narrow tasks can amortize a big train-time search budget across many deployments, (ii) how cheap the verifier is &mdash; cheap verifiers make train-time search scalable, (iii) how elastic the test-time compute is &mdash; open-ended queries can pay per-query. Go has a narrow distribution, free verifier, and rigid test-time compute. General reasoning has a wide distribution, expensive verifier, and elastic test-time compute. The two systems make the opposite choice and each choice is correct for its setting. <em>The interesting frontier is the ratio</em>: how much of your total compute do you spend on train-time distillation vs test-time sampling? Nobody has a principled answer yet, and I'd bet the next generation of RL post-training work is largely an experiment on that ratio.</p>
+      </div>
+
+      <p class="principle">Read the last five years of "reasoning" papers through the compute-inversion axis and most of the confusing differences go away. <a href="../opd/">On-Policy Distillation</a> sits close to AlphaGo Zero &mdash; it spends search-like sampling per training step and distills into the policy, then deploys cheaply. Deep Think sits at the far other end &mdash; train the policy on verifiable rewards without search, spend all search at inference. GRPO, R1-Zero, and most RLHF recipes sit somewhere in the middle, doing <em>some</em> train-time rejection sampling but much less than 1,600-sim-per-move. The question "is AlphaGo's playbook dead or alive in 2026?" is malformed. AlphaGo's playbook <em>is</em> the playbook; we're just running it with different values of where the search budget lives.</p>
+    </div>
+  </section>
+
+  <!-- =========================== THE ECHO =========================== -->
+  <section id="echo">
+    <div class="wrap">
+      <h2 class="sec">the echo <span class="desc-inline">// where AlphaGo's loop is running right now</span></h2>
+
+      <p>If the loop &mdash; policy + search + verifier + self-play tape + distillation &mdash; is the real contribution, you should expect to see it rattling around in 2026-era frontier systems that have nothing visible to do with Go. I claim you do. Here are four places I see it clearly, and one place I think it's missing.</p>
+
+      <div class="grid c2">
+        <div class="card">
+          <h4>[echo&nbsp;1] <span style="color:var(--cyan)">o-series / Deep Think</span></h4>
+          <p><b>Inference-time search over reasoning chains.</b> The observable behaviour: spend more wall-clock per query, get a better answer, with scaling holding cleanly. Mechanically: sample $K$ candidate chains from a policy LLM, score each with a verifier (rubric, self-consistency, or internal reward model), pick the best &mdash; or, in the tree variant, grow a PUCT-shaped tree over partial chains. The 2016 AlphaGo equation is doing exactly this; the LLM is $p_\sigma$, the graded rubric is $v_\theta$, Eq. 1 decides which branch to spend the next sample on. <em>Gemini Deep Think's <a href="https://deepmind.google/discover/blog/advanced-version-of-gemini-with-deep-think-officially-achieves-gold-medal-standard-at-the-international-mathematical-olympiad/" target="_blank" rel="noopener">IMO 2025 gold</a> is the direct descendant.</em></p>
+        </div>
+        <div class="card">
+          <h4>[echo&nbsp;2] <span style="color:var(--accent)">RLHF post-training</span></h4>
+          <p><b>The reward model is the value network.</b> An LLM policy gets fine-tuned against a learned scorer that rates completions, and the policy's training corpus is its own samples. Policy + value, self-play tape, distill. The 2016 loop, at scale, with language instead of Go positions. The brittleness point is the same: reward models overfit to the generator they were trained on, and systems drift (the familiar "over-optimization" failure). The fix has looked a lot like "rerun self-play under the current policy, retrain the reward model" &mdash; AlphaGo Zero's mitigation, at different tokens.</p>
+        </div>
+        <div class="card">
+          <h4>[echo&nbsp;3] <span style="color:var(--violet)">AlphaProof &middot; AlphaEvolve</span></h4>
+          <p><b>The same template with different verifiers.</b> AlphaProof uses Lean kernel assent; AlphaEvolve uses program-score on held-out tasks; AlphaChip uses PPA-metric rewards on chip floorplans. Each is the AlphaGo loop with one component replaced: the environment / verifier. DeepMind has been running the same playbook &mdash; <em>find a domain with a cheap correctness signal, instantiate the loop</em> &mdash; for eight years. Most of Demis Hassabis's retrospective is a reading of which domains had the right kind of verifier.</p>
+        </div>
+        <div class="card">
+          <h4>[echo&nbsp;4] <span style="color:var(--amber)">World-model RL</span></h4>
+          <p><b>MuZero's latent dynamics, everywhere.</b> Dreamer-V3, Genie, LeCun-lineage JEPA world models, Sora-flavoured video-next-frame objectives, Nvidia's Cosmos. The shape &mdash; <em>learn a latent dynamics model cheap to roll out in, plan inside it</em> &mdash; is Zero-to-MuZero's contribution transplanted to domains where the real simulator is unaffordable or nonexistent. <a href="../lewm/">LeWorldModel</a> is the most recent clean instance; it swaps MuZero's prediction head for SIGReg and trains on a single L40S, but the <em>plan-in-latent-world-model</em> shape is 2020-MuZero.</p>
+        </div>
+      </div>
+
+      <div class="callout" data-variant="ok" style="margin-top:16px">
+        <span class="t">echo in public &mdash; KataGo and the open-source line</span>
+        <p>The AlphaGo / AlphaZero papers ship no code and no weights. The open-source lineage that actually carries the loop to practitioners &mdash; and extends it &mdash; is <a href="https://github.com/lightvector/KataGo" target="_blank" rel="noopener">KataGo</a> (<a href="https://arxiv.org/abs/1902.10565" target="_blank" rel="noopener">Wu, 2019</a>), alongside Facebook's <a href="https://ai.meta.com/blog/open-sourcing-new-elf-opengo-bot-and-go-research/" target="_blank" rel="noopener">ELF OpenGo</a> and <a href="https://github.com/leela-zero/leela-zero" target="_blank" rel="noopener">Leela Zero</a>. KataGo is worth calling out specifically because it isn't just an AlphaZero re-implementation: Wu's paper contributes three knobs that are now standard in any "search + self-play" system, and <em>all three exist because plain AlphaZero was wasteful in ways the original papers don't discuss</em>. (i) <b>Playout-cap randomization</b> &mdash; most self-play moves get a small budget (fast exploration); a few get a large budget with full training targets (careful distillation). (ii) <b>Auxiliary prediction targets</b> &mdash; besides $(\boldsymbol{\pi}, z)$, the network predicts territory ownership, final score, game length. These aren't used at inference; they're regularizers that force the trunk to learn features it would otherwise miss. (iii) <b>Score maximization</b> rather than win-probability, so the engine plays better under handicap and analysis. The shape generalizes: <em>cheap exploration dense, expensive distillation sparse</em> is a pattern I'd bet reappears in serious LLM RL stacks this year. If you want to actually read a self-play-plus-search codebase end-to-end, KataGo is the 10k-line cousin of MuZero with the engineering lessons written in.</p>
+      </div>
+
+      <div class="callout" data-variant="warn" style="margin-top:16px">
+        <span class="t">the missing echo &mdash; open-ended self-play</span>
+        <p>The part of AlphaGo that <em>hasn't</em> transplanted cleanly is <b>true open-ended self-play</b>. In Go, the self-play tape worked because the environment had a fixed payoff (win/loss) and a fixed state space; two copies of the policy playing each other kept improving via a well-defined zero-sum gradient. For language, code, math, there is no canonical adversary, no zero-sum structure, and "self-play" has meant "one copy of the model generates, another copy judges" &mdash; which is much closer to distillation than to Lee Sedol-vs-AlphaGo. The systems that have gotten closest &mdash; <a href="https://deepmind.google/discover/blog/alphaproof-alphazero-in-mathematics/" target="_blank" rel="noopener">AlphaProof's problem-pool approach</a>, debate-style self-critique &mdash; have a problem distribution the self-play walks over, not an adversary it competes against. The missing piece is the part of AlphaGo that was most visibly magical: <em>two copies of the system playing against each other invented new strategies the humans hadn't thought of</em>. We have not reproduced that in any post-2022 domain, and I think it's the open question that most cleanly divides what's left of AlphaGo's legacy from the world models + RLHF that consumed it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== STILL OPEN =========================== -->
+  <section id="open">
+    <div class="wrap">
+      <h2 class="sec">still open <span class="desc-inline">// what ten years has not given us</span></h2>
+
+      <p>The retrospective temptation is to read the decade as a clean climb. It isn't. Here are four AlphaGo-style problems that are still unsolved in 2026, and that I'd argue are what the <em>next</em> ten years of this line actually has to produce.</p>
+
+      <div class="grid c2">
+        <div class="card">
+          <h4>[A] Move 78 at scale &mdash; KataGo, ~97% beatable in 2022</h4>
+          <p>The cleanest scaled-up confirmation of the Move-78 distribution-gap thesis is <a href="https://arxiv.org/abs/2211.00241" target="_blank" rel="noopener">Wang, Gleave et al. 2022, <em>Adversarial Policies Beat Superhuman Go AIs</em></a>. They trained an adversarial policy against KataGo &mdash; a system stronger than any human, with six years of compounding self-play since AlphaGo Zero &mdash; and achieved a <b>>97% win rate against KataGo at the setting used by pro commentators</b>. The attack is not subtle: the adversary plays "blatantly bad moves" an amateur 5-kyu would punish, but exploits a narrow hole in KataGo's distribution by building a cyclic group that the value head consistently mis-evaluates. Subsequent work (<a href="https://arxiv.org/abs/2310.20469" target="_blank" rel="noopener">Tseng et al. 2023</a>) extended this to multiple KataGo builds. The diagnosis: six years of self-play did <em>not</em> close the distribution gap that Lee Sedol punched through in Game 4. It just moved it somewhere humans weren't looking. Every claim that a self-play-trained system is "robust" should be read against this result &mdash; the Move-78 problem is not historical, it is <em>still the state of the art</em>, and it is the reason alignment people lose sleep.</p>
+        </div>
+        <div class="card">
+          <h4>[A′] verifier collapse in open domains</h4>
+          <p>AlphaGo Zero works because Go has a <em>cheap, correct</em> verifier: the game rules. AlphaProof inherits Lean's kernel. AlphaEvolve has unit tests. The minute the verifier is itself a learned model (rubric, reward model, graded rubric), the loop develops a reward-hacking failure mode that the cheap-verifier systems don't have. Hassabis's retrospective is honest about this &mdash; "open-ended" is the word he uses for where Deep Think is extending &mdash; but the verifier-collapse problem does not yet have a crisp solution, and the 2024&ndash;2026 RLHF literature is mostly a catalogue of partial mitigations.</p>
+        </div>
+        <div class="card">
+          <h4>[B] transfer across domains</h4>
+          <p>AlphaZero's chess-shogi-Go generality is very narrow: three perfect-information 2-player zero-sum games. MuZero extends this to one-player stochastic games (Atari), which is still narrow. There is no single learned loop that moves from a finished game of Go to a half-built code repository to a proof of a new theorem &mdash; the <em>template</em> transfers, but the trained system does not. The analogue to AlphaFold's "200M structures for free, one network" would be <em>"any verifier-equipped domain, one trained loop"</em>, and that does not exist.</p>
+        </div>
+        <div class="card">
+          <h4>[C] inventing the game</h4>
+          <p>Hassabis's closing line in the 10-year retrospective is that the real test of AGI creativity would be <em>not</em> Move 37 &mdash; a move within Go &mdash; but <em>inventing a game as deep and elegant as Go</em>. I think this is an underrated framing. Every AlphaGo-style system picks up a pre-specified game or proof-system and plays better than humans inside it. None of them has produced an object &mdash; a game, a theory, a mathematical structure &mdash; that other researchers then want to study as an object in its own right. The loop optimizes inside a frame; it doesn't produce the frame.</p>
+        </div>
+        <div class="card">
+          <h4>[D] the compute-per-insight curve bent the wrong way</h4>
+          <p>AlphaGo Fan to AlphaGo Zero is a <em>compression</em>: Elo went up, hardware went down (1,202 CPUs + 176 GPUs &rarr; 4 TPUs). That trajectory has not continued. Post-2020 frontier systems are spending orders of magnitude more compute per task than AlphaZero did, and delivering, on per-task reasoning quality, wins that are large but not orders-of-magnitude large. The decade's <em>compression</em> story &mdash; do more with less &mdash; reversed sometime around 2021. Whether that's because the loop genuinely needs more compute at language scale, or because we stopped asking the "can we remove this?" question the way the 2017&ndash;2020 DeepMind papers did, is the tension worth watching.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== TAKEAWAYS =========================== -->
+  <section id="takeaways">
+    <div class="wrap">
+      <h2 class="sec">takeaways <span class="desc-inline">// signed off</span></h2>
+      <div class="grid c2">
+        <div class="card">
+          <h4>[01] The loop is the invention</h4>
+          <p>Policy proposes, verifier scores, search improves, distillation closes. Deep neural networks existed before AlphaGo. MCTS existed before AlphaGo. Self-play existed before AlphaGo. <em>Gluing them into a loop that iteratively improves</em> did not. That is the primitive the decade since has been reusing, with different components in different slots.</p>
+        </div>
+        <div class="card">
+          <h4>[02] Removals are the lesson, not the additions</h4>
+          <p>AlphaGo Fan &rarr; Lee &rarr; Master &rarr; Zero &rarr; AlphaZero &rarr; MuZero is a sequence of <em>subtractions</em>: human data, hand-crafted features, Go-specific features, even the simulator. Each subtraction was a claim that a piece everyone thought was load-bearing was not. Reading AI progress as "more of the same, scaled up" misses this. The cleanest progress &mdash; including in 2026 &mdash; has come from figuring out which inputs you can drop.</p>
+        </div>
+        <div class="card">
+          <h4>[03] Move 78 was the grown-up result</h4>
+          <p>Move 37 is the quotable moment. Move 78 &mdash; Lee Sedol's wedge that AlphaGo couldn't process &mdash; is the one that actually shaped research. It diagnosed <em>distribution-shift brittleness under the generator's own policy</em>, and the fix for it (retrain the verifier on fresh on-policy data) is the single most reused pattern of the RLHF era. Almost every alignment failure mode that has a name now was foreshadowed in that game.</p>
+        </div>
+        <div class="card">
+          <h4>[04] The verifier slot is where progress happens next</h4>
+          <p>Every echo of the AlphaGo loop in the real world &mdash; AlphaProof in Lean, AlphaEvolve in code, Deep Think in natural-language proofs &mdash; is defined by what goes in the verifier slot. Domains with cheap, correct verifiers (formal proofs, code with tests, games with rules) have made clean progress. Domains without them (open-ended dialog, creative writing, science taste) have not. The bottleneck on applying the loop further isn't policy quality or search algorithm &mdash; those are commodity now &mdash; it's the verifier. Ten years on, the AlphaGo paper's most underrated line is still Eq. 1, and the question it raises is <em>where's your verifier?</em></p>
+        </div>
+      </div>
+
+      <div class="callout" data-variant="ok" style="margin-top:28px">
+        <span class="t">// end of notebook</span>
+        <p>AlphaGo's legacy is not that machines can be creative, or that they can beat world champions, or that Go turned out to be computable. It is that a particular loop &mdash; a learned policy seeded from some prior, refined by search against a verifier, evaluated by a network trained on its own samples &mdash; is the <em>scaffolding of a general optimization engine</em>, and that the scaffolding survives every removal of its domain-specific parts. In 2016 the scaffolding was holding up a Go-playing program. In 2026 it is holding up theorem provers, coding agents, robot controllers, and the better of the two flavours of LLM post-training. Ten years from now, when we look back at 2026-era systems, we'll say the same thing: the surface was the output, the mechanism was the loop. <em>Who filled which slot with what</em> has been the real story all along.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== REFERENCES =========================== -->
+  <section id="references">
+    <div class="wrap">
+      <h2 class="sec">references</h2>
+      <ul>
+        <li>Primary &middot; <a href="https://www.nature.com/articles/nature16961" target="_blank" rel="noopener">Silver, Huang, Maddison, Guez, Sifre, van den Driessche, Schrittwieser, Antonoglou, Panneershelvam, Lanctot, Dieleman, Grewe, Nham, Kalchbrenner, Sutskever, Lillicrap, Leach, Kavukcuoglu, Graepel, Hassabis. <em>Mastering the game of Go with deep neural networks and tree search</em>. <em>Nature</em> 529, 484&ndash;489 (28 Jan 2016)</a>. The 2016 system.</li>
+        <li>Primary &middot; <a href="https://www.nature.com/articles/nature24270" target="_blank" rel="noopener">Silver et al. <em>Mastering the game of Go without human knowledge</em>. <em>Nature</em> 550, 354&ndash;359 (19 Oct 2017)</a>. AlphaGo Zero.</li>
+        <li>Primary &middot; <a href="https://arxiv.org/abs/1712.01815" target="_blank" rel="noopener">Silver et al. <em>Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm</em> (arXiv:1712.01815, Dec 2017)</a>; published as <a href="https://www.science.org/doi/10.1126/science.aar6404" target="_blank" rel="noopener"><em>Science</em> 362, 2018</a>. AlphaZero.</li>
+        <li>Primary &middot; <a href="https://www.nature.com/articles/s41586-020-03051-4" target="_blank" rel="noopener">Schrittwieser, Antonoglou, Hubert, Simonyan, Sifre, Schmitt, Guez, Lockhart, Hassabis, Graepel, Lillicrap, Silver. <em>Mastering Atari, Go, chess and shogi by planning with a learned model</em>. <em>Nature</em> 588, 604&ndash;609 (Dec 2020)</a>. MuZero.</li>
+        <li>Retrospective &middot; <a href="https://deepmind.google/blog/10-years-of-alphago/" target="_blank" rel="noopener">Hassabis. <em>From games to biology and beyond: 10 years of AlphaGo's impact</em>. Google DeepMind, 10 Mar 2026</a>. The framing post this article is in conversation with.</li>
+        <li>Retrospective &middot; <a href="https://deepmind.google/research/alphago/" target="_blank" rel="noopener">DeepMind. <em>AlphaGo</em> research page</a>. Numbers for Move 37 (1/10,000) and Move 78 ("God's Touch"); Elo and match records.</li>
+        <li>Reference &middot; <a href="https://en.wikipedia.org/wiki/AlphaGo" target="_blank" rel="noopener">Wikipedia, <em>AlphaGo</em></a>. Configuration and Elo tables used for the cross-check in the shedding table (attributes values to Silver et al. <em>Nature</em> 2017).</li>
+        <li>Reference &middot; <a href="https://en.wikipedia.org/wiki/AlphaGo_versus_Lee_Sedol" target="_blank" rel="noopener">Wikipedia, <em>AlphaGo versus Lee Sedol</em></a>. Match dates, scores, and Aja Huang's June 2016 Netherlands presentation on the Move-78 failure mode.</li>
+        <li>Documentary &middot; <a href="https://www.youtube.com/watch?v=qoinGjj60Fo" target="_blank" rel="noopener">DeepMind's retrospective video on the 2016 match (YouTube, 2026)</a>; <a href="https://www.youtube.com/watch?v=WXuK6gekU1Y" target="_blank" rel="noopener">Kohs, <em>AlphaGo</em> (2017)</a>.</li>
+        <li>Curated bibliography &middot; <a href="https://github.com/BIGBALLON/Toward-AGZ" target="_blank" rel="noopener"><em>Toward-AGZ</em> (GitHub)</a> &mdash; papers, codebases (KataGo, Leela Zero, ELF OpenGo), and match archives, collected during the author's CGI-Lab master's work under I-Chen Wu on MPV-MCTS (<a href="https://bigballon.github.io/" target="_blank" rel="noopener">bigballon.github.io</a>, <a href="https://icwu307.github.io/" target="_blank" rel="noopener">icwu307.github.io</a>). Useful for anyone reimplementing the 2016&ndash;2018 line from scratch.</li>
+        <li>IMO echo &middot; <a href="https://deepmind.google/discover/blog/ai-solves-imo-problems-at-silver-medal-level/" target="_blank" rel="noopener">DeepMind. <em>AI achieves silver-medal standard solving International Mathematical Olympiad problems</em> (Jul 2024)</a>. AlphaProof + AlphaGeometry 2.</li>
+        <li>IMO echo &middot; <a href="https://deepmind.google/discover/blog/advanced-version-of-gemini-with-deep-think-officially-achieves-gold-medal-standard-at-the-international-mathematical-olympiad/" target="_blank" rel="noopener">DeepMind. <em>Advanced version of Gemini with Deep Think officially achieves gold-medal standard at the IMO</em> (2025)</a>.</li>
+        <li>Algorithmic echo &middot; <a href="https://deepmind.google/discover/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/" target="_blank" rel="noopener">DeepMind. <em>AlphaEvolve: a Gemini-powered coding agent for designing advanced algorithms</em></a>.</li>
+        <li>Lineage &middot; <a href="https://hal.inria.fr/inria-00164003/document" target="_blank" rel="noopener">Gelly &amp; Silver. <em>Combining Online and Offline Knowledge in UCT</em> (ICML 2007)</a> &mdash; ICML 2017 Test-of-Time; the UCT-with-priors formulation that became PUCT.</li>
+        <li>Lineage &middot; Coulom. <em>Efficient selectivity and backup operators in Monte-Carlo tree search</em> (CG 2006). The first MCTS used in a top-level computer-Go program (Crazy Stone).</li>
+        <li>Theory &middot; <a href="https://arxiv.org/abs/2007.12509" target="_blank" rel="noopener">Grill, Altch&eacute;, Tang, Hubert, Valko, Antonoglou, Munos. <em>Monte-Carlo tree search as regularized policy optimization</em> (ICML 2020)</a>. The paper that formalizes MCTS-as-policy-improvement, which the Zero loss implicitly assumed.</li>
+        <li>Open source &middot; <a href="https://arxiv.org/abs/1902.10565" target="_blank" rel="noopener">Wu. <em>Accelerating Self-Play Learning in Go</em> (arXiv:1902.10565, 2019)</a>. KataGo's training tricks: playout-cap randomization, auxiliary prediction targets, score maximization. Code: <a href="https://github.com/lightvector/KataGo" target="_blank" rel="noopener">github.com/lightvector/KataGo</a>.</li>
+        <li>Adversarial &middot; <a href="https://arxiv.org/abs/2211.00241" target="_blank" rel="noopener">Wang, Gleave et al. <em>Adversarial Policies Beat Superhuman Go AIs</em> (ICML 2023; arXiv:2211.00241)</a>. The Move-78 problem, scaled up and reproduced against KataGo. Project page: <a href="https://goattack.far.ai/" target="_blank" rel="noopener">goattack.far.ai</a>.</li>
+        <li>Bitter Lesson &middot; <a href="http://www.incompleteideas.net/IncIdeas/BitterLesson.html" target="_blank" rel="noopener">Sutton. <em>The Bitter Lesson</em> (2019)</a>. The essay the AlphaGo shedding sequence is the clearest case study for.</li>
+      </ul>
+    </div>
+  </section>
+
+</div><!-- /.shell -->
+
+<script src="../../assets/theme.js"></script>
+</body>
+</html>

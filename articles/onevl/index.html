@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="OneVL is the first latent chain-of-thought to beat explicit CoT on autonomous-driving trajectory prediction. The reason isn't prefill inference — it's a visual world-model decoder that supervises the latent bottleneck against future scene state instead of against language. Traced from the paper's §3–§5 and pinned against the released Qwen3-VL-4B-Instruct backbone." />
+<meta name="theme-color" content="#05070a" />
+<title>OneVL · When Latent Reasoning Meets the World Model — thinklab</title>
+
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="icon" type="image/svg+xml" href="../../assets/favicon.svg" />
+<link rel="canonical" href="/articles/onevl/" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" /></noscript>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" />
+<link rel="stylesheet" href="../../assets/theme.css" />
+<script defer src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+  onload="(window.requestIdleCallback||function(f){return setTimeout(f,0)})(function(){renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});});"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+</head>
+<body class="page-article">
+
+<a class="home-btn" href="../../" aria-label="Back to index"><span class="arrow">←</span><span class="label">cd&nbsp;~</span></a>
+<div id="scroll-progress" aria-hidden="true"></div>
+<button id="to-top" aria-label="back to top" title="back to top">↑</button>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="G-blue"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#1b2b52"/><stop offset="1" stop-color="#0a1124"/></linearGradient>
+    <linearGradient id="G-violet" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#2e1a55"/><stop offset="1" stop-color="#180c32"/></linearGradient>
+    <linearGradient id="G-teal"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0d3d33"/><stop offset="1" stop-color="#062018"/></linearGradient>
+    <linearGradient id="G-orange" x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4a2414"/><stop offset="1" stop-color="#22100a"/></linearGradient>
+    <linearGradient id="G-pink"   x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#4e1a33"/><stop offset="1" stop-color="#26091a"/></linearGradient>
+    <linearGradient id="G-slate"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#11162a"/><stop offset="1" stop-color="#070a14"/></linearGradient>
+    <linearGradient id="G-green"  x1="0" x2="1" y1="0" y2="1"><stop offset="0"  stop-color="#0b3a22"/><stop offset="1" stop-color="#051f12"/></linearGradient>
+    <linearGradient id="G-rainbow" x1="0" x2="1">
+      <stop offset="0"   stop-color="#39ff88"/>
+      <stop offset=".33" stop-color="#00e5ff"/>
+      <stop offset=".66" stop-color="#9d7bff"/>
+      <stop offset="1"   stop-color="#ff3fa4"/>
+    </linearGradient>
+    <linearGradient id="G-neon-green" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#1a2a1e"/><stop offset="1" stop-color="#0a1710"/></linearGradient>
+    <linearGradient id="G-glow-blue"  x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#00e5ff" stop-opacity=".35"/><stop offset="1" stop-color="#00e5ff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="G-glow-green" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#39ff88" stop-opacity=".32"/><stop offset="1" stop-color="#39ff88" stop-opacity="0"/></linearGradient>
+    <radialGradient id="G-hot-green" cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#39ff88" stop-opacity=".6"/><stop offset="1" stop-color="#39ff88" stop-opacity="0"/></radialGradient>
+    <radialGradient id="G-hot-cyan"  cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#00e5ff" stop-opacity=".55"/><stop offset="1" stop-color="#00e5ff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="G-hot-mag"   cx=".5" cy=".5" r=".7"><stop offset="0" stop-color="#ff3fa4" stop-opacity=".55"/><stop offset="1" stop-color="#ff3fa4" stop-opacity="0"/></radialGradient>
+    <filter id="F-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+      <feOffset dx="0" dy="2" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".5"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-neon" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="b1"/>
+      <feGaussianBlur stdDeviation="1.5" result="b2"/>
+      <feMerge><feMergeNode in="b1"/><feMergeNode in="b2"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow-green" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="0 0 0 0 .22  0 0 0 0 1  0 0 0 0 .55  0 0 0 .7 0" result="cb"/>
+      <feMerge><feMergeNode in="cb"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="F-glow-cyan" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="0 0 0 0 0  0 0 0 0 .9  0 0 0 0 1  0 0 0 .7 0" result="cb"/>
+      <feMerge><feMergeNode in="cb"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="P-grid" width="22" height="22" patternUnits="userSpaceOnUse">
+      <path d="M 22 0 L 0 0 0 22" fill="none" stroke="#1a2338" stroke-width=".5"/>
+      <circle cx="0" cy="0" r="1" fill="#2a3458" opacity=".55"/>
+    </pattern>
+    <pattern id="P-dots" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#2a3458" opacity=".55"/>
+    </pattern>
+    <pattern id="P-scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <path d="M 0 4 L 4 0" stroke="#39ff88" stroke-width=".3" opacity=".18"/>
+    </pattern>
+    <pattern id="P-circuit" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M 0 20 L 20 20 L 20 0 M 40 60 L 40 40 L 60 40" fill="none" stroke="#1e3a52" stroke-width=".6" opacity=".5"/>
+      <circle cx="20" cy="20" r="1.4" fill="#00e5ff" opacity=".35"/>
+      <circle cx="40" cy="40" r="1.4" fill="#39ff88" opacity=".35"/>
+    </pattern>
+    <marker id="A-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#00e5ff"/></marker>
+    <marker id="A-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#9d7bff"/></marker>
+    <marker id="A-teal"   viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#39ff88"/></marker>
+    <marker id="A-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffb020"/></marker>
+    <marker id="A-green"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#39ff88"/></marker>
+    <marker id="A-mag"    viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ff3fa4"/></marker>
+    <marker id="A-amber"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffd166"/></marker>
+    <marker id="arrow"    viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c9d1d9"/></marker>
+    <symbol id="S-corner" viewBox="0 0 14 14">
+      <path d="M 1 6 L 1 1 L 6 1" fill="none" stroke="#39ff88" stroke-width="1.2"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="shell">
+
+  <!-- =========================== HERO =========================== -->
+  <header class="hero">
+    <div class="hero-term">
+      <div class="term-bar">
+        <span class="term-dot d-r"></span>
+        <span class="term-dot d-y"></span>
+        <span class="term-dot d-g"></span>
+        <span class="term-title">~/xiaomi-embodied/onevl — tech_report.pdf</span>
+      </div>
+      <div class="term-body">
+        <div class="term-prompt">
+          <span class="path">reader@thinklab</span>:<span class="cmd">~/onevl</span>$ cat paper.md | render --theme=geek --focus=compression-target<span class="cursor"></span>
+        </div>
+        <h1>OneVL &middot; When Latent Reasoning Meets the World Model</h1>
+        <p class="sub">
+          <span class="line">The paper sells a prefill trick &mdash; six logical latent tokens slotted into the prompt, one parallel forward pass, trajectory out at answer-only latency. But read §5.5 before §3 and the story reorders: <em>OneVL is the first latent chain-of-thought to beat explicit CoT on driving, and the reason is a visual world-model decoder supervising the bottleneck against future-frame tokens instead of against language</em>.</span>
+          <span class="line">This is my reading log of arXiv:2604.18486. I walk the three-decoder architecture field by field, sit with the loss, follow the three-stage curriculum that saves the whole thing from collapsing to 67 PDM, and end on the one design knob the latent-CoT literature has been mis-tuning for 12 months &mdash; <strong>the compression target</strong>.</span>
+        </p>
+        <div class="hero-badges">
+          <span class="hero-badge" data-variant="green">4B &middot; Qwen3-VL</span>
+          <span class="hero-badge" data-variant="cyan">4 visual + 2 language latent</span>
+          <span class="hero-badge" data-variant="magenta">NAVSIM 88.84 PDM</span>
+          <span class="hero-badge" data-variant="violet">4.16 Hz (MLP head)</span>
+          <span class="hero-badge" data-variant="amber">paper-only, no code</span>
+        </div>
+        <div class="hero-toc">
+          <a href="#overview">overview</a>
+          <a href="#arch">architecture</a>
+          <a href="#loss">loss</a>
+          <a href="#training">three-stage training</a>
+          <a href="#eval">evaluation</a>
+          <a href="#ablation">ablation</a>
+          <a href="#landscape">landscape</a>
+          <a href="#deploy">deployment</a>
+          <a href="#takeaways">takeaways</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================== TL;DR =========================== -->
+  <div class="callout" data-variant="k">
+    <span class="t">TL;DR</span>
+    <p>OneVL is a 4B Vision-Language-Action model built on <b>Qwen3-VL-4B-Instruct</b> that does chain-of-thought reasoning in latent space: a tiny bottleneck of <b>4 logical visual + 2 logical language latent tokens (realized as 35 + 20 tokens in the Qwen3-VL vocabulary)</b> sits between the prompt and the trajectory answer, prefilled in one parallel forward pass so latent CoT costs the same as answer-only inference. During training, two auxiliary decoders reach into those latents: a <b>language decoder</b> reconstructs human-readable CoT; a <b>visual world-model decoder</b> predicts future-frame IBQ tokens at +0.5 s and +1.0 s. At inference both decoders are discarded. The headline number on NAVSIM is <b>88.84 PDM &mdash; the first latent CoT ever to beat explicit autoregressive CoT (88.29)</b> on driving trajectory prediction, and the ablation explains why: the visual decoder contributes <b>+0.87 PDM, the language decoder only +0.31</b>. The principle the paper quietly establishes &mdash; and the one I think travels beyond driving &mdash; is that <b>the compression target determines what the bottleneck learns</b>. Compressing language compresses a symbolic abstraction of the scene. Compressing future visual state forces the latents to internalize the geometry the trajectory actually needs.</p>
+  </div>
+
+  <!-- =========================== OVERVIEW =========================== -->
+  <section id="overview">
+    <div class="wrap">
+      <h2 class="sec">overview <span class="desc-inline">// read §5.5 before §3</span></h2>
+
+      <p>I read this paper twice. On the first pass the headline was "fast latent CoT for driving, SOTA on four benchmarks, closed-source from Xiaomi". It reads like a systems paper about prefill inference. The second pass, starting from the ablation table in §5.5, changed my mind: the systems win is real but it is not what the paper is actually doing. The paper is quietly making a claim about <em>what latent reasoning should be compressing</em>, and the answer isn't "the teacher's text CoT", which is what Coconut, CODI, and SIM-CoT have been iterating on for 12 months. The answer is "the future scene itself".</p>
+
+      <p>Here is the number I kept coming back to. On NAVSIM, under a single shared protocol &mdash; supervised fine-tuning, Qwen3-VL-4B-Instruct substrate, same trajectory-prediction task:</p>
+
+      <div class="grid c3">
+        <div class="card">
+          <h4>[explicit] AR CoT+Answer</h4>
+          <p>Full explicit chain-of-thought, generated token by token, then the trajectory. <b>88.29 PDM</b> on NAVSIM, <b>6.58 s</b> latency &mdash; a ceiling for explicit reasoning, at the cost of an inference latency that's already prohibitive for a 10 Hz control loop.</p>
+        </div>
+        <div class="card">
+          <h4>[answer-only] AR Answer</h4>
+          <p>The trajectory without any reasoning. <b>87.47 PDM</b>, <b>4.49 s</b>. This is the latency floor and the quality lower bound for explicit CoT to beat.</p>
+        </div>
+        <div class="card">
+          <h4>[latent, language-only] prior art</h4>
+          <p>COCONUT <b>84.84</b>, CODI <b>83.92</b>, SIM-CoT <b>84.21</b>. <b>Every language-only latent CoT method sits <em>below</em> the answer-only baseline</b>. Not by rounding noise &mdash; 2.6 to 3.5 PDM under. The efficiency story also inverts: SIM-CoT's per-step text decoder runs in <b>10.86 s</b>, slower than explicit CoT.</p>
+        </div>
+      </div>
+
+      <p style="margin-top:18px">That ordering is the motivation. Language-only latent CoT was supposed to be explicit CoT's efficiency win; on driving it has been losing on both axes, and the paper's §1 reads it this way: <em>"natural language descriptions of driving scenes are inherently abstract. They encode semantic labels rather than the spatiotemporal causal dynamics that actually determine future outcomes."</em> A latent vector that compresses language is compressing a symbolic abstraction of the world, not its underlying causal structure. That sentence is the spine of everything that follows.</p>
+
+      <p>OneVL's answer is to keep the tight bottleneck (four visual and two language logical latents is still tight) but <b>change what the bottleneck is supervised against</b>. Add a second auxiliary decoder whose target is not teacher text but <em>future visual state</em> &mdash; discrete future-frame tokens emitted by an IBQ tokenizer [<a href="https://arxiv.org/abs/2510.26583" target="_blank" rel="noopener">Emu3.5</a>]. To minimize reconstruction loss on unseen configurations of agents and road geometry, the visual latents must encode causal scene dynamics, not scene labels. The result: on NAVSIM, OneVL hits <b>88.84 PDM</b> at <b>4.46 s</b> latency &mdash; simultaneously beating explicit CoT on quality and matching answer-only on speed. The paper's phrasing is "first latent CoT method to surpass explicit CoT"; I would strengthen it to "first latent CoT for which the compression target finally fits the task".</p>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">closed-source — what I can and can't verify</span>
+        <p>OneVL ships paper + project page + HF paper listing + qualitative videos. <b>No training code, no inference code, no checkpoints</b>. That means every OneVL-specific number in this article &mdash; latent token counts, ablation deltas, training hyperparameters &mdash; is paper-reported and not externally replicated. The one anchor that is checkable against released code is the <b>Qwen3-VL-4B-Instruct backbone itself, pinned to commit <code>ebb281ec70b05090aa6165b016eac8ec08e71b17</code></b>: 36 LLM layers, hidden size 2560, vision depth 24, patch size 16 &mdash; all read from that commit's config.json. I'll flag where I'm trusting the paper and where I'm reading code.</p>
+      </div>
+
+      <!-- HERO diagram: three lanes of OneVL training.
+           Layout: SVG holds the frame (header strip, lane rects, header pills, arrows);
+           each lane body is a <foreignObject> with inline HTML so text auto-wraps in the
+           browser and can never overflow its container rect. See
+           prompts/article-generation.md §8.2 for the pattern. -->
+      <div class="svg-wrap">
+        <svg viewBox="0 0 1200 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three lanes of OneVL training: main VLM, visual world-model decoder, language decoder — and the routing of hidden states from visual and language latent tokens into each auxiliary at training time">
+          <rect x="0" y="0" width="1200" height="440" fill="url(#P-grid)" opacity=".45"/>
+          <g>
+            <rect x="20" y="8" width="1160" height="22" rx="3" fill="#0a0e14" stroke="rgba(255,105,0,.22)"/>
+            <text x="36" y="23" fill="#ffb020" font-size="10" font-weight="700" letter-spacing=".14em">&#9670; ONEVL &middot; THREE DECODERS ARRANGED IN ONE BOTTLENECK</text>
+            <text x="1164" y="23" fill="#8b949e" font-size="10" text-anchor="end" letter-spacing=".06em">fig: overview/main</text>
+          </g>
+
+          <!-- Lane 1: Visual aux decoder (left) -->
+          <g transform="translate(40,70)">
+            <rect x="0" y="0" width="340" height="350" rx="10" fill="url(#G-pink)" stroke="#ff3fa4" stroke-opacity=".6"/>
+            <g transform="translate(14,-10)">
+              <rect x="0" y="0" width="240" height="20" rx="3" fill="#180611" stroke="#ff3fa4"/>
+              <text x="10" y="14" fill="#ff3fa4" font-size="10" font-weight="700" letter-spacing=".14em">[A] VISUAL AUX DECODER &middot; WORLD MODEL</text>
+            </g>
+            <foreignObject x="16" y="14" width="308" height="322">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11.5px;line-height:1.5;color:#ffd3e6">
+                <div style="font-weight:700;color:#fff;margin-bottom:6px">D_v: predict future-frame tokens</div>
+                <div>input: ViT(current frame) + H_v</div>
+                <div>where H_v = main VLM hidden states</div>
+                <div style="padding-left:1em">at the 35 visual-latent positions</div>
+                <div style="margin-top:4px">target: IBQ-tokenized future frames</div>
+                <div style="padding-left:1em">at t + 0.5 s and t + 1.0 s</div>
+                <div>IBQ codebook size: 131,072 codes</div>
+                <div>images resized to 512 &#215; 512 px</div>
+                <div style="margin-top:8px;color:#ffb3d4;font-weight:700">role: compression target = physical</div>
+                <div style="color:#ffb3d4;padding-left:1em">future, not symbolic label</div>
+                <div style="color:#ffb3d4">contribution: +0.87 PDM on NAVSIM</div>
+                <div style="margin-top:8px;color:#ff9fcc;font-weight:700">preliminary: self-supervised pretrain</div>
+                <div style="color:#ff9fcc;padding-left:1em">on ViT alone, no latent conditioning</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Lane 2: Main VLM (center) -->
+          <g transform="translate(400,70)">
+            <rect x="0" y="0" width="400" height="350" rx="10" fill="url(#G-blue)" stroke="#4d6ed6" stroke-opacity=".6"/>
+            <g transform="translate(14,-10)">
+              <rect x="0" y="0" width="220" height="20" rx="3" fill="#070c1e" stroke="#7c9cff"/>
+              <text x="10" y="14" fill="#7c9cff" font-size="10" font-weight="700" letter-spacing=".14em">[B] MAIN VLM &middot; QWEN3-VL-4B</text>
+            </g>
+            <foreignObject x="16" y="14" width="368" height="322">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11.5px;line-height:1.5;color:#cfd4ec">
+                <div style="font-weight:700;color:#fff;margin-bottom:6px">Qwen3-VL-4B-Instruct backbone</div>
+                <div>36 LLM layers &middot; hidden 2560</div>
+                <div>vision depth 24 &middot; patch 16</div>
+                <div style="margin-top:10px;font-weight:700;color:#fff">prompt layout (training &amp; inference)</div>
+                <div>[system, user, img tokens,</div>
+                <div style="padding-left:1em">start-latent-vis &middot; 35 latents-vis</div>
+                <div style="padding-left:1em">end-latent-vis</div>
+                <div style="padding-left:1em">start-latent &middot; 20 latents</div>
+                <div style="padding-left:1em">end-latent, trajectory]</div>
+                <div style="margin-top:10px;color:#ffcf9a;font-weight:700">key trick: latent token IDs drawn</div>
+                <div style="color:#ffcf9a;padding-left:1em">from Qwen3-VL's existing vocab</div>
+                <div style="color:#ffcf9a;padding-left:1em">(dedicated new IDs hurt perf)</div>
+                <div style="margin-top:10px;font-size:10px;color:#8fb3ff">source: Paper 3.1-3.2, HF config.json SHA ebb281e</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Lane 3: Language aux decoder (right) -->
+          <g transform="translate(820,70)">
+            <rect x="0" y="0" width="340" height="350" rx="10" fill="url(#G-teal)" stroke="#39ff88" stroke-opacity=".55"/>
+            <g transform="translate(14,-10)">
+              <rect x="0" y="0" width="220" height="20" rx="3" fill="#051710" stroke="#39ff88"/>
+              <text x="10" y="14" fill="#39ff88" font-size="10" font-weight="700" letter-spacing=".14em">[C] LANGUAGE AUX DECODER</text>
+            </g>
+            <foreignObject x="16" y="14" width="308" height="322">
+              <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11.5px;line-height:1.5;color:#b8f0d9">
+                <div style="font-weight:700;color:#fff;margin-bottom:6px">D_l: reconstruct text CoT</div>
+                <div>input: ViT(current frame) + H_l</div>
+                <div>where H_l = main VLM hidden states</div>
+                <div style="padding-left:1em">at the 20 language-latent positions</div>
+                <div style="margin-top:4px">target: human-readable CoT text</div>
+                <div style="padding-left:1em">(scene, objects, meta-action)</div>
+                <div style="margin-top:10px;color:#7cd8a8;font-weight:700">role: compression target = text CoT</div>
+                <div style="color:#7cd8a8;padding-left:1em">lineage of Coconut / CODI / SIM-CoT</div>
+                <div style="color:#7cd8a8">contribution: +0.31 PDM on NAVSIM</div>
+                <div style="margin-top:10px;color:#ffcf9a;font-weight:700">asymmetry with [A] is the whole</div>
+                <div style="color:#ffcf9a;padding-left:1em">argument of the paper:</div>
+                <div style="color:#ffcf9a;padding-left:1em">visual signal &gt; language signal</div>
+                <div style="color:#ffcf9a;padding-left:1em">for a spatial prediction task</div>
+              </div>
+            </foreignObject>
+          </g>
+
+          <!-- Arrows from main to aux decoders (mid-lane: y = 70 + 350/2 = 245) -->
+          <path d="M 400 245 L 380 245" fill="none" stroke="#ff3fa4" stroke-width="2" marker-end="url(#A-mag)"/>
+          <path d="M 800 245 L 820 245" fill="none" stroke="#39ff88" stroke-width="2" marker-end="url(#A-green)"/>
+          <text x="395" y="235" fill="#ff9fcc" font-size="10" text-anchor="end">H_v</text>
+          <text x="805" y="235" fill="#7cd8a8" font-size="10">H_l</text>
+        </svg>
+      </div>
+      <p class="cap">Notice the asymmetry between lanes [A] and [C]: they plug into the same main VLM with the same-shaped hidden states, but their <em>targets</em> are different modalities &mdash; future pixels vs future text. The +0.87 vs +0.31 PDM gap in the ablation is the experimental payoff of that asymmetry.</p>
+
+      <p style="margin-top:18px">The rest of this piece follows the paper's spine in the order I'd actually read it: architecture field by field (§<a href="#arch">arch</a>), the combined loss (§<a href="#loss">loss</a>), the three-stage training curriculum that saves the whole thing from 21-point collapse (§<a href="#training">training</a>), the ablation that names the real contribution (§<a href="#eval">eval</a>), the prior latent-CoT arc (§<a href="#landscape">landscape</a>) OneVL is implicitly arguing against, and the deployment variant at 4.16 Hz (§<a href="#deploy">deploy</a>). The takeaways at the end sign off with what I think generalizes beyond driving.</p>
+    </div>
+  </section>
+
+  <!-- =========================== ARCHITECTURE =========================== -->
+  <section id="arch">
+  <!-- principle: latent CoT compresses to future-frame tokens -->
+    <div class="wrap">
+      <h2 class="sec">architecture <span class="desc-inline">// three components, one bottleneck</span></h2>
+
+      <p>OneVL has three trainable components: the main VLM, the language auxiliary decoder, and the visual auxiliary decoder. At inference time only the first one runs &mdash; the two decoders are training scaffolding. I'll walk the main VLM first (because its hidden states are what the decoders consume), then the two decoders.</p>
+
+      <h3 class="sub">1. Main VLM: Qwen3-VL-4B-Instruct, plus six logical latent token positions</h3>
+
+      <p>The backbone is <a href="https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct/blob/ebb281ec70b05090aa6165b016eac8ec08e71b17/config.json" target="_blank" rel="noopener">Qwen3-VL-4B-Instruct</a>, pinned at commit <code>ebb281ec70b05090aa6165b016eac8ec08e71b17</code>. The config.json there reads:</p>
+
+      <pre><code class="language-json">{
+  "architectures": ["Qwen3VLForConditionalGeneration"],
+  "model_type": "qwen3_vl",
+  "torch_dtype": "bfloat16",
+  "text_config": {
+    "hidden_size": 2560,
+    "num_hidden_layers": 36,
+    "num_attention_heads": 32,
+    "num_key_value_heads": 8,
+    "head_dim": 128,
+    "intermediate_size": 9728,
+    "vocab_size": 151936,
+    "max_position_embeddings": 262144,
+    "rope_theta": 5000000,
+    "rope_scaling": {
+      "rope_type": "default",
+      "mrope_interleaved": true,
+      "mrope_section": [24, 20, 20]
+    }
+  },
+  "vision_config": {
+    "hidden_size": 1024,
+    "depth": 24,
+    "num_heads": 16,
+    "out_hidden_size": 2560,
+    "patch_size": 16,
+    "spatial_merge_size": 2,
+    "temporal_patch_size": 2,
+    "intermediate_size": 4096,
+    "deepstack_visual_indexes": [5, 11, 17]
+  }
+}</code></pre>
+
+      <p>Three components get initialized from this checkpoint and remain fully trainable at OneVL's Stages 0 and 2 &mdash; the ViT vision encoder, the visual-to-LLM projector (an MLP aligner), and the LLM itself. <span>Paper §3.1 is verbatim about this: <em>"The backbone of OneVL is Qwen3-VL-4B-Instruct&nbsp;[5]. ... All three components are initialized from the Qwen3-VL-4B-Instruct checkpoint and remain fully trainable in Stages&nbsp;0 and&nbsp;2."</em></span> The backbone trains under standard next-token cross-entropy $\mathcal{L}_c$ on both the trajectory answer tokens and the latent tokens introduced below.</p>
+
+      <p>Three details from that config.json are worth naming because they show up in OneVL's downstream choices. First, <b>max_position_embeddings = 262144</b> is 256K &mdash; OneVL inherits the 256K context window from Qwen3-VL without paying for it in training, which is what makes long driving-sequence prompts (multi-frame history, structured ego state, future-frame supervision targets) fit without compromise. Second, the <b>mrope_section = [24, 20, 20]</b> plus <b>rope_theta = 5&nbsp;000&nbsp;000</b> are Qwen3-VL-specific (not inherited from Qwen2.5-VL's [16, 24, 24] / $\theta = 1{\cdot}10^6$) &mdash; the 5M rope base is what makes the 256K window usable, and the mrope section is the temporal/height/width split for multimodal rotary. OneVL doesn't modify either. Third, <b>deepstack_visual_indexes = [5, 11, 17]</b> are the vision-encoder layers Qwen3-VL exposes for deepstack feature routing; whether OneVL's visual-aux-decoder taps those specific layers or just the final ViT output is <em>not specified in the paper</em>. The paper says "current-frame ViT patch embeddings" (§3.3, §3.4) without naming a layer, so I flag this as a spot where the published architecture under-specifies a choice that might matter for reproduction.</p>
+
+      <p>The load-bearing new design is the <b>latent token layout in the assistant response</b>. OneVL defines two classes of latent tokens:</p>
+
+      <ul>
+        <li><b>Visual latent tokens</b> &mdash; logical count $\mathcal{C}_v = 4$. Framed by <code>start-latent-vis</code> and <code>end-latent-vis</code> delimiters. These are placed <em>before</em> the language latents in the response; they're meant to carry spatiotemporal reasoning about future scene state.</li>
+        <li><b>Language latent tokens</b> &mdash; logical count $\mathcal{C}_t = 2$. Framed by <code>start-latent</code> and <code>end-latent</code>. Placed between the visual latents and the trajectory answer. They carry linguistic reasoning (scene interpretation, critical-object analysis, driving intent).</li>
+      </ul>
+
+      <p>If you've read CODI you'll recognize the naming convention &mdash; OneVL inherits <code>latent</code>, <code>start-latent</code>, <code>end-latent</code> directly from that paper. The new twist is having <em>two</em> classes, and doing something sneakier with how they're represented.</p>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">paper-internal: the vocabulary trick that isn't in the architecture diagram</span>
+        <p>Paper §3.2 last line is the kind of detail you'd miss on a single read. The logical count is $\mathcal{C}_v = 4$ and $\mathcal{C}_t = 2$, but the <em>realized</em> token sequences in the Qwen3-VL vocabulary are <b>35 visual tokens and 20 language tokens</b>. Why? Because adding dedicated special tokens like <code>latent-vis</code> to the VLM vocab caused <em>performance degradation</em>; the authors worked around it by representing latent tokens using existing vocabulary IDs. The 4-to-35 and 2-to-20 mappings are whatever ID strings the existing vocab happened to produce. This is load-bearing: if you tried to reproduce the paper with new special tokens, you'd get worse numbers and not know why. I flag it here because it's the kind of implementation detail that lives in footnotes and controls whether a result replicates. [Paper §3.2]</p>
+      </div>
+
+      <h3 class="sub">2. Language auxiliary decoder D<sub>l</sub></h3>
+
+      <p>The language decoder's job is to recover human-readable CoT text from the 20 language-latent hidden states. Concretely, for each training sample, the main VLM produces $\mathcal{H}_l \in \mathbb{R}^{\mathcal{C}_t \times d}$ at the language-latent positions. The decoder also gets current-frame ViT patch embeddings $\mathcal{V} \in \mathbb{R}^{N_v \times d}$ as a separate input (concatenated after an MLP projection). Its output is the ground-truth CoT string &mdash; scene description, object analysis, meta-action &mdash; trained with straight cross-entropy. [Paper §3.3, Eq. 2]</p>
+
+      <p>This is architecturally the same lineage as <a href="https://arxiv.org/abs/2509.20317" target="_blank" rel="noopener">SIM-CoT's</a> auxiliary decoder (September 2025): a small text-generation module attached during training, thrown away at inference. The difference is that SIM-CoT was the only latent-CoT method with <em>any</em> text supervision, and SIM-CoT on NAVSIM scores <b>84.21 PDM</b>, 4.6 points below OneVL. So whatever the language decoder is contributing, it is not sufficient by itself for driving.</p>
+
+      <h3 class="sub">3. Visual auxiliary decoder D<sub>v</sub> &mdash; the load-bearing new piece</h3>
+
+      <p>This is the decoder that makes OneVL work. Its input is the same pattern: concatenate an MLP projection of ViT patch embeddings with an MLP projection of $\mathcal{H}_v \in \mathbb{R}^{\mathcal{C}_v \times d}$, the main VLM's hidden states at the 35 visual-latent positions. Its output is a sequence of discrete future-frame visual tokens at two time horizons: <b>$t + 0.5\,\mathrm{s}$ and $t + 1.0\,\mathrm{s}$</b>.</p>
+
+      <p>To turn future RGB frames into discrete targets, the paper uses the <b><a href="https://arxiv.org/abs/2510.26583" target="_blank" rel="noopener">Emu3.5</a> IBQ (Index-Backpropagation Quantization) visual tokenizer</b> with a codebook of 131,072 codes, frames resized to 512&times;512 pixels, vocabulary extended by 131,072 additional token IDs on the Qwen3-VL base. The IBQ tokenizer runs offline over the ground-truth future frames &mdash; no additional forward passes during OneVL training. [Paper §3.4]</p>
+
+      <p>The formal reason the visual decoder exists is stated simply in §3.4 motivation: "autonomous driving is inherently a spatial-temporal prediction task. Future frame visual tokens, which represent what the driving scene will look like at near-term horizons, are a natural target for learning the visual latent representations." What this means operationally: to predict what pixels will be there at $t+1.0\,\mathrm{s}$, the visual latents $\mathcal{H}_v$ must carry information about where agents are going, how the lane geometry evolves, and what hazards are about to appear. Pattern memorization from the training set does not minimize reconstruction loss on unseen configurations. The decoder <em>forces</em> the latents to internalize scene dynamics.</p>
+
+      <p>I'll note this framing once clearly, because it's where the paper and I both want to land: <b>the visual decoder is an action-conditioned world model, pretrained unconditionally and then steered by the main VLM's latent-state predictions</b>. Paper §4.1 is explicit about this role: "since these latent tokens encode the driving agent's planned action &mdash; derived from the main model's reasoning &mdash; the decoder effectively transitions from unconditioned next-frame generation to action-conditioned rollouts of the world model." A planner's hidden state doubling as an input to a world-model rollout is not a new idea (world-model-based RL has been doing it since <a href="https://arxiv.org/abs/1803.10122" target="_blank" rel="noopener">Ha &amp; Schmidhuber 2018</a>), but wiring it up inside a single VLA with prefill inference is.</p>
+    </div>
+  </section>
+
+  <!-- =========================== LOSS / MATH =========================== -->
+  <section id="loss">
+  <!-- principle: compression target is world-model frames, not text -->
+    <div class="wrap">
+      <h2 class="sec">loss &amp; math <span class="desc-inline">// one cross-entropy, three targets</span></h2>
+
+      <p>The combined training objective is three cross-entropies summed with fixed weights, and the weight ratio is itself a design choice worth pausing on. [Paper §3.5, Eq. 5]</p>
+
+      <div class="formula">
+        $$ \mathcal{L} \;=\; \mathcal{L}_c \;+\; \lambda_l\,\mathcal{L}_l \;+\; \lambda_v\,\mathcal{L}_v, \qquad \lambda_l = 1.0,\; \lambda_v = 0.1 $$
+      </div>
+
+      <p>Walking each term:</p>
+
+      <ul>
+        <li><b>$\mathcal{L}_c$</b> &mdash; the main VLM's next-token cross-entropy, applied to both the trajectory answer tokens <em>and</em> the latent tokens themselves. The trajectory is what the policy is optimizing; the latent-token CE ensures the main VLM "uses" those positions to carry something (the main model has to predict what token comes at position <code>start-latent-vis</code> too, which bootstraps the latents' role in context).</li>
+        <li><b>$\mathcal{L}_l$</b> &mdash; the language auxiliary cross-entropy between decoded text and the ground-truth CoT annotation, weighted by $\lambda_l = 1.0$. Definition:
+          <div class="formula">
+            $$ \mathcal{L}_l \;=\; -\sum_{i=1}^{|\mathcal{T}_{y_t}|}\log P_{\mathcal{D}_l}\!\left(\mathcal{T}_{y_t,i}\mid \mathcal{Z}_l,\, \mathcal{T}_{y_t,<i}\right) $$
+          </div>
+          where $\mathcal{Z}_l = [W_l(\mathcal{V}),\, W_l(\mathcal{H}_l)]$ is the concatenation of projected ViT patch embeddings and projected language-latent hidden states.
+        </li>
+        <li><b>$\mathcal{L}_v$</b> &mdash; the visual auxiliary cross-entropy between decoded discrete future-frame tokens and the IBQ-tokenized ground truth, weighted by $\lambda_v = 0.1$. Same structural form:
+          <div class="formula">
+            $$ \mathcal{L}_v \;=\; -\sum_{t=1}^{|\mathcal{T}_{y_v}|}\log P_{\mathcal{D}_v}\!\left(\mathcal{T}_{y_v,t}\mid \mathcal{Z}_v,\, \mathcal{T}_{y_v,<t}\right) $$
+          </div>
+          where $\mathcal{T}_{y_v} = [\mathcal{T}_{y_v,1},\, \mathcal{T}_{y_v,2}]$ is the concatenation of future-frame token sequences at $+0.5$ and $+1.0$ s.
+        </li>
+      </ul>
+
+      <p class="principle"><b>Why is $\lambda_v$ ten times smaller than $\lambda_l$?</b> The paper's rationale is one line: "visual token reconstruction is a harder task, and a smaller weight prevents it from dominating the training signal" [§3.5]. I buy this. Future-frame prediction has a much larger output space than future-CoT-text &mdash; for a 512&times;512 frame the IBQ sequence is long and the 131,072-way classification is harder per-token than the text decoder's 151,936-way vocab softmax, because frame tokens lack the language prior the main VLM already has. Without the weight damping, the visual loss would dominate the gradient and the main VLM would end up overweighting "did I reconstruct the future frame?" at the expense of "did I predict the right trajectory?". The trajectory is the policy output; it must stay load-bearing in the gradient. A smaller $\lambda_v$ lets the visual decoder act as a <em>regularizer on what the latent encodes</em> rather than a competing task. The counterfactual is concrete: if you crank $\lambda_v$ up to 1.0, the paper doesn't publish an ablation but the staging collapse analysis (§<a href="#training">training</a>, below) suggests the visual objective overwhelms trajectory optimization exactly the way it does when you skip the curriculum. The small weight is a trust-region style move: "let the visual signal shape the latent subtly, don't let it take over."</p>
+    </div>
+  </section>
+
+  <!-- =========================== THREE-STAGE TRAINING =========================== -->
+  <section id="training">
+  <!-- principle: three-stage training bootstraps latent reasoning -->
+    <div class="wrap">
+      <h2 class="sec">three-stage training <span class="desc-inline">// the curriculum that saves the paper from 67 PDM</span></h2>
+
+      <p>If you read the architecture section and thought "sure, three trainable modules, big combined loss, optimize end-to-end and you're done", here is the twist: <b>without the three-stage curriculum the model collapses from 88.84 to 67.13 PDM &mdash; a 21.7-point drop &mdash; with an initialization-time gradient norm of 378.22 versus 0.28 for the staged recipe</b>. The curriculum is not an optimization nicety; it's the difference between the paper working and not working.</p>
+
+      <div class="mermaid">
+flowchart LR
+  P["Preliminary<br/>vis-dec pretrain<br/>(unconditional)"] --> S0["Stage 0<br/>Main VLM warmup<br/>trajectory CE only"]
+  S0 --> S1["Stage 1<br/>Aux decoders warmup<br/>main VLM frozen"]
+  S1 --> S2["Stage 2<br/>Joint fine-tune<br/>all three modules"]
+      </div>
+      <p class="cap">Four stages, not three &mdash; the paper emphasizes the main three, but the preliminary self-supervised pretraining of the visual decoder alone is where the unconditional world-model prior gets baked in. Notice the dependency chain: each stage only runs because the previous one produced something stable to optimize against.</p>
+
+      <div class="pipe">
+        <div class="step">
+          <div class="n">00</div>
+          <h5>Preliminary: self-supervised vis-dec pretrain</h5>
+          <p>Before the visual decoder is ever connected to the main VLM, it is pretrained on <em>current-frame ViT embeddings only</em> to predict future-frame IBQ tokens at +0.5 and +1.0 s. No latent conditioning. No main model. This is standard self-supervised video prediction and it gives the decoder a strong unconditional prior for visual dynamics. <b>Principle</b>: asking the decoder to predict future frames conditioned on latent tokens that carry no information yet is an ill-posed task; bake in a world-model prior first, then introduce the latent as a steering signal. [Paper §4.1]</p>
+        </div>
+        <div class="step">
+          <div class="n">01</div>
+          <h5>Stage 0: main VLM warmup</h5>
+          <p>Train the main Qwen3-VL-4B end-to-end on trajectory prediction, with both classes of latent tokens embedded in every training sample's assistant response. Only $\mathcal{L}_c$ runs. No auxiliary decoders yet. The goal is for the main VLM's attention to start routing information into the latent positions &mdash; trajectory tokens attend to latent positions, so the latents have to carry something trajectory-relevant. This is what makes Stage 1 well-posed. [Paper §4.2]</p>
+        </div>
+        <div class="step">
+          <div class="n">02</div>
+          <h5>Stage 1: aux decoders warmup, main model frozen</h5>
+          <p><b>Freeze the entire main VLM</b>. Train only $\mathcal{D}_l$ with $\mathcal{L}_l$ and $\mathcal{D}_v$ with $\mathcal{L}_v$. Decoders now see a stable latent distribution from the main model and can actually converge. Without freezing, the decoders would be chasing a moving target (the main VLM changing simultaneously), which is what blows up in the ablation below. [Paper §4.3]</p>
+        </div>
+        <div class="step">
+          <div class="n">03</div>
+          <h5>Stage 2: joint end-to-end fine-tune</h5>
+          <p>Unfreeze everything. Train with the full combined loss. Both sides of the optimization (main model, aux decoders) are already well-initialized, so the joint pass is a refinement, not a cold start. Gradients from $\mathcal{L}_l$ and $\mathcal{L}_v$ now flow back into the main model and <em>reshape the latent representations</em> to simultaneously serve trajectory, language, and visual targets. [Paper §4.4]</p>
+        </div>
+      </div>
+
+      <h3 class="sub">What happens without the curriculum</h3>
+
+      <p>Paper Table 7 reports "OneVL w/o staged train" &mdash; same architecture, same loss, same data, but the combined loss is optimized jointly from step 1 with no preliminary pretraining and no frozen-main-model warmup. The PDM score is <b>67.13</b>. For context, the AR answer-only baseline on NAVSIM is 87.47. Joint end-to-end training from scratch produces a model <em>twenty PDM points below just answering the question</em>. The paper's diagnosis is specific and useful:</p>
+
+      <div class="grid c2">
+        <div class="card">
+          <h4>Diagnosis 1 &mdash; gradient shock</h4>
+          <p>At initialization, joint end-to-end training produces an exploding gradient norm of <b>378.22</b>, versus <b>0.28</b> for the staged recipe. The gradient shock destabilizes the pretrained Qwen3-VL backbone. <span class="hi">The visual decoder, given latents carrying no information yet, tries to backpropagate through a high-entropy 131,072-way softmax into latent states that have no reason to encode scene dynamics. The gradient goes everywhere.</span></p>
+        </div>
+        <div class="card">
+          <h4>Diagnosis 2 &mdash; task interference</h4>
+          <p>The backbone struggles to simultaneously optimize conflicting objectives (next-token CE on trajectory, CoT reconstruction, future-frame reconstruction). Final trajectory prediction loss lands at <b>0.186</b> vs <b>0.136</b> for staged &mdash; the model converges to a local minimum where none of the tasks are well-served. The curriculum resolves the interference by <em>aligning</em> the sub-tasks one at a time.</p>
+        </div>
+      </div>
+
+      <p class="principle">The principle worth stating sharply: <b>the curriculum is not aesthetic; it is what determines whether the visual decoder learns dynamics or learns memorization shortcuts</b>. Paper Figure 8 (which I can't reproduce here but is worth looking up) shows this concretely: under the full recipe, the visual decoder's predicted future frames are spatially coherent with the current scene &mdash; plausible ego motion, recognizable lane geometry. Under the ablated training, the decoded "future" frames are visually irrelevant to the input &mdash; the decoder has memorized training-set artifacts it can reconstruct from noise. That memorization isn't just aesthetically bad; it <em>poisons the gradient flowing back into the main VLM</em>, because the decoder is telling the main model to shape its latents to match scenes the model never saw. Without the preliminary unconditional pretraining that establishes a sensible world-model prior, and without Stage 1's frozen-main training that aligns decoders against a stable latent distribution, the Stage 2 joint pass cannot produce a useful gradient signal. This is a concrete instance of the paper's larger thesis that the quality of compression determines the quality of intelligence: the curriculum is what makes the compression <em>actually be about scene dynamics</em> rather than about arbitrary reconstructions that happen to minimize a loss.</p>
+    </div>
+  </section>
+
+  <!-- =========================== EVALUATION =========================== -->
+  <section id="eval">
+  <!-- principle: latent CoT beats explicit CoT on driving tasks -->
+    <div class="wrap">
+      <h2 class="sec">evaluation <span class="desc-inline">// the ablation is the thesis</span></h2>
+
+      <p>OneVL reports on four benchmarks (NAVSIM, ROADWork, Impromptu, APR1). I'll walk the NAVSIM table because it's the one with the most complete comparison across latent-CoT baselines, then summarize the three others and the ablation that I think is the most elegant piece of §5 &mdash; the one that names the real contribution.</p>
+
+      <h3 class="sub">NAVSIM &mdash; the shared-axis table</h3>
+
+      <p>All rows below use the same supervised-fine-tune protocol, same Qwen3-VL-4B-Instruct substrate for the 4B rows, and the same PDM-score metric (Predictive Driver Model &mdash; composite of safety, comfort, progress). Previous-SOTA 8B rows are reproduced from their own papers and marked with &ast;. [Paper §5.3, Table 1]</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>System</th>
+              <th>Category</th>
+              <th class="num">Params</th>
+              <th class="num">NAVSIM PDM &uarr;</th>
+              <th class="num">Latency (s) &darr;</th>
+              <th>Bottleneck supervision</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>AdaThinkDrive &ast;</td>
+              <td>explicit-CoT VLA</td>
+              <td class="num">8B</td>
+              <td class="num">86.20</td>
+              <td class="num">&mdash;</td>
+              <td>text tokens, adaptive chain</td>
+            </tr>
+            <tr>
+              <td>LaST-VLA &ast;</td>
+              <td>explicit-CoT VLA</td>
+              <td class="num">8B</td>
+              <td class="num">87.30</td>
+              <td class="num">&mdash;</td>
+              <td>text tokens</td>
+            </tr>
+            <tr>
+              <td>AR Answer</td>
+              <td>answer-only</td>
+              <td class="num">4B</td>
+              <td class="num">87.47</td>
+              <td class="num">4.49</td>
+              <td>none &mdash; baseline</td>
+            </tr>
+            <tr>
+              <td>AR CoT+Answer</td>
+              <td>explicit CoT</td>
+              <td class="num">4B</td>
+              <td class="num">88.29</td>
+              <td class="num">6.58</td>
+              <td>text chain before answer</td>
+            </tr>
+            <tr>
+              <td>COCONUT (adapt.)</td>
+              <td>language-only latent</td>
+              <td class="num">4B</td>
+              <td class="num">84.84</td>
+              <td class="num">5.93</td>
+              <td>teacher hidden state, curriculum</td>
+            </tr>
+            <tr>
+              <td>CODI (adapt.)</td>
+              <td>language-only latent</td>
+              <td class="num">4B</td>
+              <td class="num">83.92</td>
+              <td class="num">8.62</td>
+              <td>self-distilled explicit CoT</td>
+            </tr>
+            <tr>
+              <td>SIM-CoT (adapt.)</td>
+              <td>language-only latent</td>
+              <td class="num">4B</td>
+              <td class="num">84.21</td>
+              <td class="num">10.86</td>
+              <td>per-step text aux decoder</td>
+            </tr>
+            <tr>
+              <td><b>OneVL</b></td>
+              <td><b>VL latent + world-model</b></td>
+              <td class="num"><b>4B</b></td>
+              <td class="num"><b class="best">88.84</b></td>
+              <td class="num"><b class="best">4.46</b></td>
+              <td><b>text CoT + future visual tokens, prefilled</b></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cap">Notice the latency-column ordering flip: SIM-CoT's per-step text-decoder auxiliary runs at <b>10.86 s</b>, slower than explicit CoT and more than 2&times; OneVL. Adding language supervision to a sequential latent-CoT bottleneck can actually make inference <em>worse</em> than just emitting the language directly. OneVL's prefill trick is what decouples supervision richness from inference latency. Best-cell markers indicate the row-local winner under each column's native ordering (higher PDM / lower latency); for the 4B latent-CoT rows OneVL wins on both axes.</p>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">drift: AdaThinkDrive supervised-FT vs RL</span>
+        <p>
+          <span class="paper-val">OneVL Table 1 lists <b>AdaThinkDrive at 86.20 PDM</b> with the &ast; footnote "derived from the corresponding paper".</span>
+          <span class="code-val"><a href="https://arxiv.org/abs/2509.13769" target="_blank" rel="noopener">AdaThinkDrive's own paper (arXiv:2509.13769)</a> reports <b>90.3 PDM</b> using GRPO reinforcement learning on top of its adaptive-CoT supervised-FT base.</span>
+          <span class="resolution">Same benchmark, different regime &mdash; the OneVL table is strict supervised-FT; the 90.3 number is RL-post-trained. OneVL's 88.84 beats the 86.20 supervised-FT number cleanly; it does <em>not</em> beat the 90.3 RL-augmented number. My read: apples-to-apples is supervised-FT vs supervised-FT and OneVL is ahead, but anyone citing "OneVL is NAVSIM SOTA" should know an RL-post-trained AdaThinkDrive variant exists and is higher. I went with the paper's supervised-FT number.</span>
+        </p>
+      </div>
+
+      <h3 class="sub">The three other benchmarks &mdash; same pattern, different metric</h3>
+
+      <p>OneVL runs the same protocol on three additional benchmarks. I'll keep the prose tight because the story is structurally identical to NAVSIM: OneVL wins on both accuracy and latency among 4B-class models, language-only latent CoT methods all underperform even answer-only AR, and the paper-reported previous-SOTA numbers sit below OneVL under the supervised-FT comparison.</p>
+
+      <div class="grid c3">
+        <div class="card">
+          <h4>ROADWork &mdash; construction zones</h4>
+          <p>ADE / FDE in pixels. OneVL <b>12.49 / 28.80</b>. Previous YNet SOTA <b>22.68 / 80.78</b>. AR CoT+Answer <b>13.18 / 29.98</b> at 10.74 s latency; OneVL matches or beats it at 4.71 s. SIM-CoT here runs <b>6.19 s</b> because the chain has fewer reasoning steps to supervise than on NAVSIM. [Paper Table 2]</p>
+        </div>
+        <div class="card">
+          <h4>Impromptu &mdash; corner cases</h4>
+          <p>ADE / FDE in meters. OneVL <b>1.34 / 3.70</b>. Previous Impromptu VLA SOTA <b>1.60 / 4.28</b>. Trajectory L2 error averaged 1-4 s: OneVL <b>1.01 m</b> vs Impromptu VLA <b>1.22 m</b>. [Paper Tables 3-4]</p>
+        </div>
+        <div class="card">
+          <h4>APR1 &mdash; Chain of Causation annotations</h4>
+          <p>ADE / FDE in meters. OneVL <b>2.62 / 7.53</b> beats Cosmos-Reason's <b>2.86 / 7.42</b> on ADE, slightly trails on FDE by 0.11 m. Paper notes Cosmos-Reason uses RL post-training, OneVL is supervised-FT only &mdash; the ADE win in a tighter-param regime is the honest comparison. [Paper Table 5]</p>
+        </div>
+      </div>
+
+      <div class="callout" data-variant="warn">
+        <span class="t">drift: Impromptu ADE, teaser card vs paper and detailed table</span>
+        <p>
+          <span class="paper-val">Paper Table 3 reports Impromptu <b>ADE = 1.34 m</b>.</span>
+          <span class="code-val">The <a href="https://xiaomi-embodied-intelligence.github.io/OneVL/" target="_blank" rel="noopener">OneVL project page's teaser stat card</a> displays <b>1.31 m</b> &mdash; but the project page's own detailed result table (further down the same page) agrees with the paper at <b>1.34 m</b>.</span>
+          <span class="resolution">So the drift is teaser-card-vs-everything-else, not page-vs-paper. I cite <b>1.34</b> (paper-consistent with the project-page detailed table); the 1.31 on the teaser card is a copy-edit inconsistency, not a measurement refinement.</span>
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- =========================== ABLATION =========================== -->
+  <section id="ablation">
+  <!-- principle: removing world model collapses latent CoT -->
+    <div class="wrap">
+      <h2 class="sec">ablation <span class="desc-inline">// the table that carries the thesis</span></h2>
+
+      <p>Paper Table 7 is the table I think carries the whole argument of §5. Four rows, same architecture, four variants:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Variant</th>
+              <th>Lang. dec.</th>
+              <th>Vis. dec.</th>
+              <th>Staged train</th>
+              <th class="num">NAVSIM PDM</th>
+              <th class="num">&Delta; vs full</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>OneVL w/o vis. dec.</td>
+              <td>&check;</td>
+              <td>&mdash;</td>
+              <td>&check;</td>
+              <td class="num">87.97</td>
+              <td class="num">&minus;0.87</td>
+            </tr>
+            <tr>
+              <td>OneVL w/o lang. dec.</td>
+              <td>&mdash;</td>
+              <td>&check;</td>
+              <td>&check;</td>
+              <td class="num">88.53</td>
+              <td class="num">&minus;0.31</td>
+            </tr>
+            <tr>
+              <td>OneVL w/o staged train</td>
+              <td>&check;</td>
+              <td>&check;</td>
+              <td>&mdash;</td>
+              <td class="num">67.13</td>
+              <td class="num">&minus;21.71</td>
+            </tr>
+            <tr>
+              <td><b>OneVL (full)</b></td>
+              <td>&check;</td>
+              <td>&check;</td>
+              <td>&check;</td>
+              <td class="num"><b class="best">88.84</b></td>
+              <td class="num">&mdash;</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cap">Three things to read off the table. (1) The decoders are roughly additive &mdash; 0.87 + 0.31 &asymp; 1.18 PDM of joint contribution. (2) The asymmetry &mdash; <b>visual dominates language by 2.8&times;</b> &mdash; is the paper's real finding. (3) The staging drop is on a different scale entirely: the curriculum is a precondition for the decoders doing anything useful at all.</p>
+
+      <p class="principle"><b>Why does visual supervision help more than language supervision?</b> This is the paper's §5.7 and it's the paragraph I'd ask a reader to remember. Language CoT for driving describes the scene in abstract, symbolic terms &mdash; "a sedan is merging" &mdash; one step removed from the physical dynamics that determine the trajectory. Visual token reconstruction is a harder, more causally direct target: to predict what pixels will be there at $t + 1.0$ s, the compressed latent must encode the causal dynamics of agent motion and road geometry, not just scene labels. Future-frame prediction is a world-model objective; language CoT has no analogous spatial grounding mechanism. In compression terms: language supervision has slack &mdash; many different latent encodings can decode to the same textual summary &mdash; while world-model supervision is tighter, because predicting an unseen future frame punishes any representation that didn't internalize causal dynamics. <span class="hi">The reason the visual decoder contributes +0.87 and the language decoder +0.31 is that visual supervision is a harder constraint on the bottleneck, and the constraint is exactly aligned with trajectory prediction's geometric nature.</span></p>
+
+      <div class="callout" data-variant="k">
+        <span class="t">the signature insight</span>
+        <p>If you remember one thing from this piece, make it the ratio <b>+0.87 vs +0.31</b>. That is <em>the number</em>: a paper where two auxiliary decoders are wired to the same bottleneck, with the same input shape and the same loss form, and the one whose target is future pixels beats the one whose target is future text by 2.8&times;. My read is that this number finally separates "how richly you supervise language" from "what modality the compression target lives in" &mdash; and for any task measured in a non-linguistic modality, the latter dominates. I think this generalizes: swap "future frames" for "future contact pose" in manipulation, or "future structure" in biology, and the same asymmetry will show up. The language-only latent-CoT thread was optimizing the wrong axis. OneVL is the paper that made that visible with a 0.55 PDM delta over explicit CoT and a 4.46 s latency.</p>
+      </div>
+
+      <p>The text-CoT quality evaluation (paper Table 6) is a side story I'll note briefly. On 500 NAVSIM test samples, OneVL's language decoder reconstructs CoT with a 71.00 meta-action exact-match accuracy, against 67.20 for SIM-CoT and 73.20 for AR explicit CoT. OneVL closes most of the gap to explicit while running at answer-only latency. If you care about interpretability as a first-class deliverable, this is the number that says "the language explanations are still useful &mdash; you haven't sacrificed legibility to get speed and accuracy". I don't think interpretability is the main pitch, but it's real.</p>
+    </div>
+  </section>
+
+  <!-- =========================== LANDSCAPE =========================== -->
+  <section id="landscape">
+  <!-- principle: OneVL among latent-CoT systems -->
+    <div class="wrap">
+      <h2 class="sec">landscape <span class="desc-inline">// a 12-month arc of bottleneck supervision</span></h2>
+
+      <p>Looking at the NAVSIM table is one way to locate OneVL. Another way, which I find more useful, is to trace the chain of latent-CoT methods it's implicitly arguing against. Each step in this chain shrinks the bottleneck and enriches what the bottleneck is <em>supervised against</em>. OneVL is the first step where the supervision changes modality.</p>
+
+      <div class="pipe">
+        <div class="step">
+          <div class="n">01</div>
+          <h5>COCONUT (Hao et al., Dec 2024)</h5>
+          <p><a href="https://arxiv.org/abs/2412.06769" target="_blank" rel="noopener">arXiv:2412.06769</a>. Replace reasoning tokens with continuous hidden-state vectors fed back as input embeddings. Curriculum training gradually swaps explicit CoT tokens for these "continuous thoughts". <b>Supervision signal: downstream task loss only; no per-step alignment.</b> Benchmarked on GSM8k and ProntoQA &mdash; language-only, no driving. This is the paper that established "latent reasoning in continuous space is worth trying".</p>
+        </div>
+        <div class="step">
+          <div class="n">02</div>
+          <h5>CODI (Shen et al., Feb 2025)</h5>
+          <p><a href="https://arxiv.org/abs/2502.21074" target="_blank" rel="noopener">arXiv:2502.21074</a>. Shared GPT-2 plays both teacher (explicit CoT) and student (implicit CoT). L1 loss aligns hidden activations at the final-answer token between the two passes. <b>Supervision: self-distillation against a teacher's hidden state.</b> Introduces the <code>latent</code> / <code>start-latent</code> / <code>end-latent</code> token naming OneVL inherits. First implicit CoT to match explicit CoT on GSM8k at GPT-2 scale.</p>
+        </div>
+        <div class="step">
+          <div class="n">03</div>
+          <h5>SIM-CoT (Wei et al., Sep 2025)</h5>
+          <p><a href="https://arxiv.org/abs/2509.20317" target="_blank" rel="noopener">arXiv:2509.20317</a>, code at <a href="https://github.com/InternLM/SIM-CoT" target="_blank" rel="noopener">InternLM/SIM-CoT</a>. Diagnoses a collapse mode: as you scale the number of latent tokens, hidden states become homogeneous &mdash; the bottleneck stops carrying per-step distinctions. Fix: attach a <b>text-decoding auxiliary decoder</b> during training only, force each latent token to decode into its corresponding explicit reasoning step, discard the decoder at inference. <b>Supervision: per-step text alignment via auxiliary decoder.</b> This is the direct architectural ancestor of OneVL's language decoder.</p>
+        </div>
+        <div class="step">
+          <div class="n">04</div>
+          <h5>OneVL (Xiaomi, Apr 2026)</h5>
+          <p>Keeps the SIM-CoT language-aux-decoder pattern. <b>Adds a second auxiliary decoder whose target is future visual state &mdash; not text</b>. Packages both with prefill inference so latent CoT runs at answer-only latency. <b>Supervision: text CoT + future-frame visual tokens, jointly, on a 4+2 logical-latent bottleneck.</b> The modality swap is the thing that was missing from the arc.</p>
+        </div>
+      </div>
+
+      <p style="margin-top:18px">What strikes me walking this chain is how <em>local</em> each iteration is. Coconut says "compress against the task". CODI says "compress against the teacher's hidden state too". SIM-CoT says "compress against per-step text too". Each one widens the information content of the supervision, holds the bottleneck tight, and reports progress on GSM8k-class reasoning. None of them <em>change what modality the bottleneck is supervised against</em>, because the whole thread was optimizing one axis and holding target fixed at language. OneVL's move is a category shift: the target goes from "language about the world" to "the world itself, discretized into IBQ tokens".</p>
+
+      <p class="principle">A bottleneck is defined by two things: its width and its target. The reason the Coconut &rarr; CODI &rarr; SIM-CoT arc plateaued on driving is that it optimized width and kept target fixed at language &mdash; and without a spatial supervision signal, the latents can satisfy the loss by encoding scene labels that throw away the geometry trajectory prediction actually needs. OneVL keeps width tight (4 + 2 logical latents is smaller than most latent-CoT setups) and changes target. <b>For a spatial prediction task, swapping to a spatial target is the dominant design axis</b>. This is what the ablation number ratio (+0.87 vs +0.31) concretely says: otherwise, if language supervision alone were sufficient, SIM-CoT would have closed the gap a year ago. If you take one thing from this piece: the compression target is a design knob, and for tasks measured in a non-linguistic modality, choosing a compression target in that modality dominates choosing a richer language supervision.</p>
+    </div>
+  </section>
+
+  <!-- =========================== DEPLOYMENT =========================== -->
+  <section id="deploy">
+  <!-- principle: latent reasoning halves inference token count -->
+    <div class="wrap">
+      <h2 class="sec">deployment <span class="desc-inline">// MLP head, 4.16 Hz, and what prefill gives you</span></h2>
+
+      <p>OneVL's inference story has two layers. The first &mdash; <b>prefill</b> &mdash; is what makes latent CoT match answer-only AR latency. The second &mdash; the <b>MLP head regression variant</b> &mdash; is what makes the whole model plausible for on-vehicle deployment.</p>
+
+      <h3 class="sub">Prefill: the latent tokens live in the prompt</h3>
+
+      <p>At inference the two auxiliary decoders are discarded. The latent tokens &mdash; both visual and language &mdash; are <b>prefilled into the model's prompt context as fixed token sequences</b>, because their specific vocabulary IDs were seen by the main VLM during training. The inference prompt is literally:</p>
+
+      <pre><code class="language-python">prompt = (
+    system_message +
+    user_query +                                       # image + ego state + command + history
+    [TOKEN_START_LATENT_VIS] +
+    [TOKEN_LATENT_VIS] * 35 +                          # C_v = 4 logical, 35 realized
+    [TOKEN_END_LATENT_VIS] +
+    [TOKEN_START_LATENT] +
+    [TOKEN_LATENT] * 20 +                              # C_t = 2 logical, 20 realized
+    [TOKEN_END_LATENT]
+)
+# model then autoregressively generates ONLY trajectory tokens after this prefill</code></pre>
+
+      <p>All 57 latent-interface tokens (35 + 20 + 4 delimiters) land in the prefill phase rather than the decode phase. Modern transformers process the entire prefill in one parallel forward pass, so the added latency over just "image tokens + short text prompt" is negligible. [Paper §3.6, Eq. 6]</p>
+
+      <p class="principle"><b>Why prefill works, mechanically.</b> The main VLM was trained to "use" those latent positions &mdash; attention from trajectory tokens attends to latent-state positions, and Stage 2 aligned the latent states to carry both linguistic and scene-dynamics information. At inference, the model doesn't need to <em>generate</em> latent tokens one at a time &mdash; it just needs the hidden states at those positions to be whatever the trained main-model pathway produces given the prompt. Those hidden states come out of the single prefill forward pass for free. The generation phase only has to produce trajectory waypoints, which is shorter than any CoT. <b>The reasoning happens at prefill time, at prompt-processing speed</b>. The name "One-Step Latent Reasoning" is the paper describing this exactly: the reasoning is one step because the latent states are all produced in one parallel pass, not because the reasoning is shallow.</p>
+
+      <p>On NAVSIM this lands at <b>4.46 s</b> vs <b>4.49 s</b> for AR answer-only &mdash; a difference below measurement noise. Compared to AR CoT+Answer at 6.58 s, it's 1.5&times; faster. On ROADWork the ratio is more dramatic: OneVL 4.71 s vs AR CoT+Answer 10.74 s, a 2.3&times; speedup &mdash; because the ROADWork explicit chains are longer on average. Prefill's payoff scales with chain length.</p>
+
+      <h3 class="sub">MLP head &mdash; the deployment variant</h3>
+
+      <p>Here is the subtle thing about OneVL's autoregressive inference: even though latent CoT has no added overhead, the <em>trajectory tokens themselves</em> are still generated autoregressively. On NAVSIM, the trajectory decode is where most of the 4.46 s goes. For a 10 Hz control loop (100 ms per prediction), 4.46 s is two orders of magnitude too slow.</p>
+
+      <p>The paper's deployment variant (§5.6) appends a compact MLP head on top of the Qwen3-VL-4B backbone that takes the hidden state of the last latent token and predicts the trajectory in a single feed-forward pass. No autoregressive decoding. During training the model still uses the full multimodal latent supervision (Stage 2 is run with both the LLM head and the MLP head active); at inference, you pick which head you want. Table 8:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Variant</th>
+              <th class="num">NAVSIM PDM &uarr;</th>
+              <th class="num">Latency (s) &darr;</th>
+              <th class="num">Hz</th>
+              <th class="num">% of AR latency</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>OneVL (AR, full)</td>
+              <td class="num">88.84</td>
+              <td class="num">4.46</td>
+              <td class="num">0.22</td>
+              <td class="num">100%</td>
+            </tr>
+            <tr>
+              <td><b>OneVL (MLP regression)</b></td>
+              <td class="num">86.83</td>
+              <td class="num"><b class="best">0.24</b></td>
+              <td class="num"><b class="best">4.16</b></td>
+              <td class="num"><b>5.4%</b></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cap">Trade 2.01 PDM for roughly 18&times; lower latency. The 5.4% number is $0.2405 / 4.46$; the 4.16 Hz is $1/0.2405$. <b>Crucially, the MLP variant is still faster than AR answer-only (0.24 s vs 4.49 s)</b> &mdash; the latent supervision is what teaches the hidden state enough that one feed-forward pass through the MLP is comparable to what the AR trajectory head gets after autoregressively generating waypoints.</p>
+
+      <p>The MLP variant is where OneVL moves from "interesting paper" to "plausible production artifact". 86.83 PDM at 4.16 Hz is in the same quality neighborhood as 8B models (LaST-VLA at 87.30), with a fraction of the latency. Paper §5.6 is candid about the trade-off: "this variant can still exploit multimodal latent supervision during training" &mdash; the world-model decoder still contributes during training, which is what makes the MLP head's single pass this good. Without OneVL's latent-CoT training, an MLP head on top of a VLM would not land here.</p>
+    </div>
+  </section>
+
+  <!-- =========================== TAKEAWAYS =========================== -->
+  <section id="takeaways">
+    <div class="wrap">
+      <h2 class="sec">takeaways <span class="desc-inline">// signed off</span></h2>
+      <div class="grid c2">
+        <div class="card">
+          <h4>[01] The compression target is a design knob, not a given</h4>
+          <p>The last year of latent-CoT research treated "compress reasoning into a hidden state" as one axis to tune, and optimized how rich the <em>supervision</em> on that compression is (downstream task &rarr; teacher hidden state &rarr; per-step text alignment). OneVL is the proof that the <em>target</em> of the compression is its own axis, and for tasks measured in a non-linguistic modality it dominates. <b>The generalization I'd bet on</b>: in robotic manipulation, the right compression target isn't future frames &mdash; it's predicted contact pose or predicted joint torque. In protein design, it's predicted structure. The right auxiliary decoder is the one that decodes the latent into the modality the task is measured in.</p>
+        </div>
+        <div class="card">
+          <h4>[02] Prefill is the speed trick; decoders are the quality trick</h4>
+          <p>These two pieces are almost independent. You could run the prefill trick without the dual decoders and get fast but bad latent CoT. You could run the dual decoders without prefill and get good latents but AR-slow inference. The paper ships both because they compose: the decoders give you latents worth prefilling. <b>If someone read this paper and walked away thinking "the cool part is they run it in one forward pass", they read the wrong paper.</b> The cool part is the world-model decoder; prefill is what lets them ship it.</p>
+        </div>
+        <div class="card">
+          <h4>[03] Staged training is not optional, and it's the detail reproducers will miss</h4>
+          <p>A 21.7-PDM catastrophic drop when you skip the three-stage curriculum is a bigger effect than almost any ablation in the paper. Anybody porting this pattern to a different VLA &mdash; a manipulation policy, a legged locomotion policy &mdash; should expect to rediscover the curriculum the hard way if they miss it. The preliminary self-supervised pretraining of the visual decoder (learn a world-model prior before wiring in the latents) is the step I'd most easily forget and most severely regret forgetting. <b>When reproducing OneVL-style architectures, write the curriculum down <em>first</em>, then fill in the modules.</b></p>
+        </div>
+        <div class="card">
+          <h4>[04] No public code &mdash; what that costs us</h4>
+          <p>Xiaomi shipped paper + project page + HF paper listing + videos. No training code, no inference code, no checkpoints. The training hyperparameters (optimizer, LR schedule, batch size, exact step counts per stage) are in appendix §8.2 but not released as a reproducible config. For a paper whose headline result is "first latent CoT to beat explicit CoT", that's real: <b>the +0.87 PDM visual-decoder win needs an independent replication before it becomes a fact about latent reasoning rather than a fact about OneVL's specific implementation</b>. I'm curious whether someone open-sourcing an OneVL-style recipe on Qwen3-VL or Llama-3.2-V will hit the same number. My prior: the curriculum and the Emu3.5 tokenizer choice will turn out to be touchier than the paper admits; the core thesis about compression target will hold.</p>
+        </div>
+      </div>
+
+      <div class="callout" data-variant="ok" style="margin-top:28px">
+        <span class="t">// end of notebook</span>
+        <p>OneVL is the paper where the latent-CoT literature stops being a story about "how much can we compress reasoning" and becomes a story about "compress it against what". On driving, the answer is future pixels, not future text &mdash; and the gap between those targets is worth 0.55 PDM more than explicit chain-of-thought, at 1.5&times; the speed. The gap is also, if I'm right, what will start showing up in robotic VLAs next, with a different decoder target.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================== REFERENCES =========================== -->
+  <section id="references">
+    <div class="wrap">
+      <h2 class="sec">references</h2>
+      <ul>
+        <li>Paper &middot; <a href="https://arxiv.org/abs/2604.18486" target="_blank" rel="noopener">Xiaomi Embodied Intelligence Team. OneVL: One-Step Latent Reasoning and Planning with Vision-Language Explanation. arXiv:2604.18486, 2026</a>.</li>
+        <li>Project page &middot; <a href="https://xiaomi-embodied-intelligence.github.io/OneVL/" target="_blank" rel="noopener">xiaomi-embodied-intelligence.github.io/OneVL</a> &mdash; teaser, qualitative rollouts, BibTeX.</li>
+        <li>HF paper listing &middot; <a href="https://huggingface.co/papers/2604.18486" target="_blank" rel="noopener">huggingface.co/papers/2604.18486</a>.</li>
+        <li>Backbone &middot; <a href="https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct/blob/ebb281ec70b05090aa6165b016eac8ec08e71b17/config.json" target="_blank" rel="noopener">Qwen3-VL-4B-Instruct config.json at SHA ebb281e</a> &mdash; the only artifact of OneVL's stack that is publicly verifiable.</li>
+        <li>Visual tokenizer &middot; <a href="https://arxiv.org/abs/2510.26583" target="_blank" rel="noopener">Emu3.5 Technical Report (arXiv:2510.26583)</a> &mdash; source of the IBQ 131,072-code visual vocabulary OneVL uses for future-frame supervision.</li>
+        <li>Prior work &middot; <a href="https://arxiv.org/abs/2412.06769" target="_blank" rel="noopener">Hao et al. Coconut: Training LLMs to Reason in a Continuous Latent Space (arXiv:2412.06769, 2024 / COLM 2025)</a>.</li>
+        <li>Prior work &middot; <a href="https://arxiv.org/abs/2502.21074" target="_blank" rel="noopener">Shen et al. CODI: Compressing Chain-of-Thought into Continuous Space via Self-Distillation (arXiv:2502.21074, 2025 / EMNLP 2025)</a>.</li>
+        <li>Prior work &middot; <a href="https://arxiv.org/abs/2509.20317" target="_blank" rel="noopener">Wei et al. SIM-CoT: Supervised Implicit Chain-of-Thought (arXiv:2509.20317, 2025)</a>, code at <a href="https://github.com/InternLM/SIM-CoT" target="_blank" rel="noopener">InternLM/SIM-CoT</a> &mdash; the architectural ancestor of OneVL's language auxiliary decoder.</li>
+        <li>Prior work &middot; <a href="https://arxiv.org/abs/2509.13769" target="_blank" rel="noopener">AdaThinkDrive: Adaptive Thinking via RL for Autonomous Driving (arXiv:2509.13769, 2025)</a> &mdash; the supervised-FT NAVSIM SOTA OneVL compares against; the 90.3 RL result is from this paper, not reflected in OneVL Table 1.</li>
+        <li>World-model grounding &middot; <a href="https://arxiv.org/abs/1803.10122" target="_blank" rel="noopener">Ha &amp; Schmidhuber. World Models (arXiv:1803.10122, 2018)</a> &mdash; the conceptual ancestor of "planner hidden state doubling as world-model input".</li>
+        <li>NAVSIM benchmark &middot; <a href="https://arxiv.org/abs/2406.15349" target="_blank" rel="noopener">Dauner et al. NAVSIM: Data-Driven Non-Reactive AV Simulation (arXiv:2406.15349, 2024)</a>.</li>
+      </ul>
+    </div>
+  </section>
+
+</div><!-- /.shell -->
+
+<script src="../../assets/theme.js"></script>
+</body>
+</html>

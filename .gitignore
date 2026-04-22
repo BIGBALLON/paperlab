@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# defensive — thinklab is zero-build, but don't track node/bun artefacts if anyone adds tooling
+node_modules/
+.pnpm-store/
+bun.lockb
+package-lock.json
+yarn.lock
+
+# logs / temp
+*.log
+*.tmp
+/dist/
+/build/
+
+# local-only overrides
+.env
+.env.local
+
+# the per-article brief is user-filled, ephemeral, and should never ship
+prompts/brief.md
+
+# Python (in case you add a helper script)
+__pycache__/
+*.pyc
+.venv/

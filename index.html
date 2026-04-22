@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="description" content="thinklab — a lab for thinks worth sharing." />
+<meta name="theme-color" content="#05070a" />
+<title>thinklab</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+<link rel="canonical" href="/" />
+<link rel="stylesheet" href="./assets/theme.css" />
+</head>
+<body class="page-index">
+
+<div class="haze" aria-hidden="true"></div>
+
+<header class="topbar" role="banner">
+  <div class="topbar-inner">
+    <a class="brand" href="./" aria-label="thinklab — home">
+      <span class="brand-prompt" aria-hidden="true">$</span><span class="brand-name">think<span class="brand-accent">·lab</span></span><span class="brand-caret" aria-hidden="true"></span>
+    </a>
+    <a class="hunt-link" href="https://bigballon.github.io/clauding_hacker/"
+       target="_blank" rel="noopener"
+       title="CLAUDING // verb_hunter — catch all 187 spinner verbs"
+       aria-label="Play CLAUDING verb hunter">
+      <svg width="16" height="16" aria-hidden="true"><use href="./assets/icons.svg#i-hunt"/></svg>
+    </a>
+    <a class="github-link" href="https://github.com/BIGBALLON/thinklab"
+       target="_blank" rel="noopener"
+       title="thinklab on GitHub" aria-label="thinklab on GitHub">
+      <svg width="16" height="16" aria-hidden="true"><use href="./assets/icons.svg#i-gh"/></svg>
+    </a>
+    <label class="search-box" for="search-input">
+      <svg class="icon" width="13" height="13" aria-hidden="true"><use href="./assets/icons.svg#i-search"/></svg>
+      <input id="search-input" type="search" autocomplete="off" spellcheck="false" placeholder="search" />
+      <span class="shortcut">/</span>
+    </label>
+  </div>
+</header>
+
+<div id="scroll-progress" aria-hidden="true"></div>
+<button id="to-top" aria-label="back to top" title="back to top">↑</button>
+
+<main class="shell">
+
+  <header class="index-hero">
+    <h1 class="index-title">Where thoughts linger</h1>
+    <p class="index-lede" role="text" aria-label="curl $world | think --hard | tee the-post-I-wish-existed.md">
+      <span class="lede-prompt"><span class="lede-path">~/thinklab</span> <span class="lede-sigil">$</span></span>
+      <span class="lede-cmd">curl</span> <span class="lede-var">$world</span>
+      <span class="lede-pipe">|</span>
+      <span class="lede-cmd">think</span> <span class="lede-flag">--hard</span>
+      <span class="lede-pipe">|</span>
+      <span class="lede-cmd">tee</span> <span class="lede-file">the-post-I-wish-existed<span class="lede-ext">.md</span></span>
+    </p>
+  </header>
+
+  <section id="articles" aria-label="Articles">
+    <div class="grid-rail grid-rail-top" aria-hidden="true">
+      <span class="gr-label">index</span>
+      <span class="gr-line"></span>
+      <span class="gr-stat"><span id="grid-count">—</span>&nbsp;entries</span>
+      <span class="gr-stat gr-stat-dim"><span id="grid-latest">—</span></span>
+    </div>
+
+    <div class="article-grid" id="article-grid"></div>
+
+    <div class="grid-rail grid-rail-end" aria-hidden="true">
+      <span class="gr-dot"></span>
+      <span class="gr-label gr-label-dim">end of feed</span>
+      <span class="gr-line"></span>
+    </div>
+  </section>
+
+</main>
+
+<script src="./assets/theme.js"></script>
+</body>
+</html>

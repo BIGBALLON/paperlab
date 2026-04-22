@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "articles": [
+    {
+      "slug": "vision-banana",
+      "path": "articles/vision-banana/",
+      "date": "2026-04-23",
+      "title": "Vision Banana — Perception Through an Invertible RGB Codec",
+      "thesis": "Vision Banana's codec isn't a convenience — it's the mechanism that routes around Zuo-2025's finding that Nano Banana Pro hallucinates plausible detail but loses on pixel-consistency metrics: generate RGB, invert the codec, measure meters instead of pixels.",
+      "summary": "Reads the paper against Wiedemer-2025 (Veo 3's emergent zero-shot vision) and Zuo-2025 (NBP's subjective-vs-pixel-metric dichotomy). Walks the power-transform + Gray-code Hamiltonian cube walk (Eq. 1, verified: each step flips one RGB bit); distinguishes VB's metric depth from Marigold's affine-invariant depth; re-tables the 6-specialist Depth Anything 3 comparison with the column mapping corrected (VB wins DIODE-Indoor by 0.079 over DA3, beats DA3 on nuScenes by 0.152 where DA3 collapses); names three mechanism claims (universal interface, mode-seeking, generalist-learners) and scores each against the evidence."
+    },
+    {
+      "slug": "lewm",
+      "path": "articles/lewm/",
+      "date": "2026-04-23",
+      "title": "LeWorldModel — Two Losses, One GPU, 48× Planning",
+      "thesis": "Move collapse prevention out of the architecture and into the objective — two losses, one GPU, and a world model a small team can actually train.",
+      "summary": "A JEPA-based world model that trains end-to-end from pixels with just two loss terms — L_pred and SIGReg. The real contribution isn't 15M-on-one-GPU; it's moving collapse prevention out of structural machinery (EMA teachers, frozen DINOv2, six-term losses) and into a single regularizer on the latent distribution."
+    },
+    {
+      "slug": "alphago-10",
+      "path": "articles/alphago-10/",
+      "date": "2026-04-23",
+      "title": "AlphaGo at 10 — The Loop That Shed Its Priors",
+      "thesis": "Move 37 was the spectacle; the mechanism was a closed loop of policy, value, MCTS and self-play — and the decade since has been a monotonic shedding of priors (human data → domain symmetries → rules → numerical verifier), with every 2026 frontier system running some version of that loop.",
+      "summary": "Ten years after Lee Sedol 4–1, re-read as mechanism. PUCT and the MCTS-as-policy-improvement-operator equation; the two 1-in-10,000 moves (37 and 78) as symmetric distribution-gap failures; the Fan → Lee → Master → Zero → AlphaZero → MuZero sequence as a catalogue of priors retired; the compute-inversion axis that separates AlphaGo's train-time search from o-series test-time search; and why Wang et al.'s 97%-beatable KataGo shows Move 78's problem is still the state of the art."
+    },
+    {
+      "slug": "qwen3-5-omni",
+      "path": "articles/qwen3-5-omni/",
+      "date": "2026-04-22",
+      "title": "Qwen3.5-Omni — ARIA and the Hybrid-Attention Thinker-Talker",
+      "thesis": "ARIA's one monotonic inequality replaces MFA and a fixed interleave constant. Hybrid-Attention is what makes 256k-ctx TTFC honest.",
+      "summary": "ARIA's one-line monotonic ratio replaces MFA + fixed interleave; Hybrid-Attention (GDN alongside attention) is the 3.5 move on top of 3-Omni's MoE. The release is API-only — a regression worth naming."
+    },
+    {
+      "slug": "opd",
+      "path": "articles/opd/",
+      "date": "2026-04-22",
+      "title": "On-Policy Distillation — The Reframe",
+      "thesis": "'SFT vs RL' is the wrong axis. The right one is sampling-policy × reward-density — and on-policy distillation is the quadrant that was sitting empty.",
+      "summary": "A thoughts piece on Thinking Machines Lab's post. The 2×2 of sampling-policy × reward-density, the ~4-line incorporate_kl_penalty patch that fills the empty quadrant, the matched-LoRA 50–100× experiment, and why a frozen teacher makes this the only continual-learning primitive that doesn't drift."
+    },
+    {
+      "slug": "glm-5",
+      "path": "articles/glm-5/",
+      "date": "2026-04-22",
+      "title": "GLM-5 — DSA on an MLA Base, and Sequential RL That Doesn't Forget",
+      "thesis": "Three costs, all paid honestly: Muon Split kills logit blow-up, a 20B-token DSA retrofit replaces a 943B-token rewrite, and sequential RL stops forgetting by on-policy distillation across stages.",
+      "summary": "Three anti-cost patterns under one 744B/A40B roof: Muon Split kills logit blow-up without clipping, DSA retrofits onto MLA in 20B tokens (1/47 of V3.2), and on-policy cross-stage distillation stitches Reasoning→Agentic→General RL without forgetting."
+    },
+    {
+      "slug": "onevl",
+      "path": "articles/onevl/",
+      "date": "2026-04-21",
+      "title": "OneVL — When Latent Reasoning Meets the World Model",
+      "thesis": "Latent CoT finally beats explicit CoT — not because the latents got smarter, but because the decoder supervising them is the world, not the teacher.",
+      "summary": "First latent CoT to beat explicit CoT on driving — because the compression target moved from teacher text to future-frame tokens. Architecture, three-stage training, ablations, and the principle that travels."
+    },
+    {
+      "slug": "kimi-k2",
+      "path": "articles/kimi-k2/",
+      "date": "2026-04-20",
+      "title": "Kimi K2 — Why 85 on Creative Writing Isn't Luck",
+      "thesis": "The 85 on Creative Writing isn't luck — it's what falls out of a closed loop between verifiable reward and a self-critique rubric.",
+      "summary": "MuonClip stabilizes the 1T base; the real story is post-training — a 23k-tool agentic data factory plus a closed-loop self-critique rubric reward anchored on verifiable tasks."
+    },
+    {
+      "slug": "kimi-k2-5",
+      "path": "articles/kimi-k2-5/",
+      "date": "2026-04-20",
+      "title": "Kimi K2.5 — Dip-and-Recover: The Real Cost of Bolting Vision onto a 1T MoE",
+      "thesis": "A multimodal model isn't the text model plus a vision tower — it's the text model after 15T tokens of controlled damage, recovered by Joint RL and PARL.",
+      "summary": "From the 1T MoE base and the MoonViT-3D encoder, through Zero-Vision SFT, Joint RL and the PARL agent swarm — Kimi K2.5 taken apart layer by layer."
+    }
+  ]
+}
